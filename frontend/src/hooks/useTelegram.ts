@@ -135,31 +135,41 @@ export const useTelegram = () => {
     tg?.openTelegramLink(url)
   }, [tg])
 
-  // Share text via Telegram using switchInlineQuery or share URL
+  // Share text - copy to clipboard and show confirmation
   const shareText = useCallback((text: string) => {
-    if (!tg) {
-      // Fallback for non-Telegram browsers
-      if (navigator.share) {
-        navigator.share({ text }).catch(() => {})
+    // Copy to clipboard
+    navigator.clipboard?.writeText(text).then(() => {
+      // Show success message
+      if (tg) {
+        tg.showPopup({
+          title: 'Скопировано!',
+          message: 'Текст заметки скопирован. Теперь вы можете отправить его в любой чат.',
+          buttons: [{ type: 'ok', text: 'OK' }]
+        })
+        tg.HapticFeedback?.notificationOccurred('success')
       } else {
-        // Copy to clipboard as last resort
-        navigator.clipboard?.writeText(text)
+        alert('Текст скопирован в буфер обмена!')
       }
-      return
-    }
-
-    // Use Telegram share URL
-    // This opens the share dialog in Telegram
-    const encodedText = encodeURIComponent(text)
-    const shareUrl = `https://t.me/share/url?text=${encodedText}`
-    
-    try {
-      tg.openTelegramLink(shareUrl)
-    } catch {
-      // Fallback: try opening as regular link
-      tg.openLink(shareUrl)
-    }
+    }).catch(() => {
+      // Fallback: show the text in popup for manual copy
+      if (tg) {
+        tg.showAlert('Не удалось скопировать. Попробуйте вручную.')
+      }
+    })
   }, [tg])
+  
+  // Forward to chat - uses Telegram's native forward
+  const forwardToChat = useCallback((text: string) => {
+    if (!tg) return
+    
+    // Use switchInlineQuery to share via bot
+    try {
+      tg.switchInlineQuery(text, ['users', 'groups', 'channels'])
+    } catch {
+      // Fallback to copy
+      shareText(text)
+    }
+  }, [tg, shareText])
 
   return {
     tg,
@@ -179,5 +189,6 @@ export const useTelegram = () => {
     openLink,
     openTelegramLink,
     shareText,
+    forwardToChat,
   }
 }
