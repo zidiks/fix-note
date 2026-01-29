@@ -1,13 +1,16 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNotes, useSearchNotes } from '../hooks/useNotes.ts'
-import { DateGroup } from './DateGroup.tsx'
-import { useTelegram } from '../hooks/useTelegram.ts'
+import { useNotes, useSearchNotes } from '../hooks/useNotes'
+import { DateGroup } from './DateGroup'
+import { NoteCard } from './NoteCard'
+import { useTelegram } from '../hooks/useTelegram'
+import { Note } from '../api/client'
 
 interface NotesListProps {
   searchQuery: string
+  onSelectNote?: (note: Note) => void
 }
 
-export const NotesList = ({ searchQuery }: NotesListProps) => {
+export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
   const { hapticNotification } = useTelegram()
   const { groupedNotes, isLoading, deleteNote } = useNotes()
   const { results: searchResults, isLoading: isSearching } = useSearchNotes(searchQuery)
@@ -32,7 +35,7 @@ export const NotesList = ({ searchQuery }: NotesListProps) => {
       <div className="px-4 pt-2">
         {[1, 2, 3].map((i) => (
           <div key={i} className="ios-card p-4 mb-3" style={{
-            backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary))'
+            backgroundColor: 'var(--bg-secondary)'
           }}>
             <div className="flex gap-3">
               <div className="w-8 h-8 skeleton rounded-full" />
@@ -76,9 +79,24 @@ export const NotesList = ({ searchQuery }: NotesListProps) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2, delay: index * 0.05 }}
-              className="ios-card p-4 mx-4 mb-2"
+              className="ios-card p-4 mx-4 mb-2 cursor-pointer haptic-tap"
+              onClick={() => {
+                // Convert search result to Note-like object for viewing
+                if (onSelectNote) {
+                  onSelectNote({
+                    id: result.id,
+                    user_id: '',
+                    content: result.content,
+                    summary: result.summary,
+                    source: 'text',
+                    duration_seconds: null,
+                    created_at: result.created_at,
+                    updated_at: result.created_at,
+                  })
+                }
+              }}
               style={{
-                backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary))'
+                backgroundColor: 'var(--bg-secondary)'
               }}
             >
               <div className="flex items-start gap-3">
@@ -103,6 +121,20 @@ export const NotesList = ({ searchQuery }: NotesListProps) => {
                     {result.summary || result.content}
                   </p>
                 </div>
+                
+                {/* Chevron */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="flex-shrink-0 mt-1"
+                  style={{ color: 'var(--text-tertiary)' }}
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
               </div>
             </motion.div>
           ))}
@@ -135,6 +167,7 @@ export const NotesList = ({ searchQuery }: NotesListProps) => {
             notes={group.notes}
             groupIndex={groupIndex}
             onDeleteNote={handleDelete}
+            onSelectNote={onSelectNote}
           />
         ))}
       </AnimatePresence>

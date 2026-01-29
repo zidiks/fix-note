@@ -43,6 +43,9 @@ interface WebApp {
   disableClosingConfirmation: () => void
   setHeaderColor: (color: string) => void
   setBackgroundColor: (color: string) => void
+  openLink: (url: string, options?: { try_instant_view?: boolean }) => void
+  openTelegramLink: (url: string) => void
+  switchInlineQuery: (query: string, choose_chat_types?: string[]) => void
   HapticFeedback: {
     impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void
@@ -124,6 +127,40 @@ export const useTelegram = () => {
     tg?.showConfirm(message, callback)
   }, [tg])
 
+  const openLink = useCallback((url: string) => {
+    tg?.openLink(url)
+  }, [tg])
+
+  const openTelegramLink = useCallback((url: string) => {
+    tg?.openTelegramLink(url)
+  }, [tg])
+
+  // Share text via Telegram using switchInlineQuery or share URL
+  const shareText = useCallback((text: string) => {
+    if (!tg) {
+      // Fallback for non-Telegram browsers
+      if (navigator.share) {
+        navigator.share({ text }).catch(() => {})
+      } else {
+        // Copy to clipboard as last resort
+        navigator.clipboard?.writeText(text)
+      }
+      return
+    }
+
+    // Use Telegram share URL
+    // This opens the share dialog in Telegram
+    const encodedText = encodeURIComponent(text)
+    const shareUrl = `https://t.me/share/url?text=${encodedText}`
+    
+    try {
+      tg.openTelegramLink(shareUrl)
+    } catch {
+      // Fallback: try opening as regular link
+      tg.openLink(shareUrl)
+    }
+  }, [tg])
+
   return {
     tg,
     user,
@@ -139,7 +176,8 @@ export const useTelegram = () => {
     showPopup,
     showAlert,
     showConfirm,
+    openLink,
+    openTelegramLink,
+    shareText,
   }
 }
-
-

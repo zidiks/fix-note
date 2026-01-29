@@ -1,16 +1,17 @@
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { Note } from '../api/client.ts'
-import { useTelegram } from '../hooks/useTelegram.ts'
+import { Note } from '../api/client'
+import { useTelegram } from '../hooks/useTelegram'
 
 interface NoteCardProps {
   note: Note
   index: number
+  onSelect?: (note: Note) => void
   onDelete?: (id: string) => void
 }
 
-export const NoteCard = ({ note, index, onDelete }: NoteCardProps) => {
+export const NoteCard = ({ note, index, onSelect, onDelete }: NoteCardProps) => {
   const { hapticImpact, hapticNotification, showConfirm } = useTelegram()
 
   const isVoice = note.source === 'voice'
@@ -32,7 +33,13 @@ export const NoteCard = ({ note, index, onDelete }: NoteCardProps) => {
     ? format(date, 'HH:mm')
     : format(date, 'd MMM, HH:mm', { locale: ru })
 
-  const handleDelete = () => {
+  const handleClick = () => {
+    hapticImpact('light')
+    onSelect?.(note)
+  }
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
     hapticImpact('medium')
     showConfirm('Удалить заметку?', (confirmed) => {
       if (confirmed && onDelete) {
@@ -44,13 +51,13 @@ export const NoteCard = ({ note, index, onDelete }: NoteCardProps) => {
 
   return (
     <motion.div
-      className="note-card ios-card p-4 mx-4 mb-2 haptic-tap"
+      className="note-card ios-card p-4 mx-4 mb-2 haptic-tap cursor-pointer"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.05 }}
-      onClick={() => hapticImpact('light')}
+      onClick={handleClick}
       style={{
-        backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary))'
+        backgroundColor: 'var(--bg-secondary)'
       }}
     >
       <div className="flex items-start gap-3">
@@ -105,27 +112,22 @@ export const NoteCard = ({ note, index, onDelete }: NoteCardProps) => {
             >
               {formattedDate}
             </span>
+
+            {/* Chevron */}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              <path d="M9 18l6-6-6-6" />
+            </svg>
           </div>
         </div>
-
-        {/* Delete button */}
-        {onDelete && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDelete()
-            }}
-            className="p-2 -mr-2 haptic-tap rounded-full"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-            </svg>
-          </button>
-        )}
       </div>
     </motion.div>
   )
 }
-
-

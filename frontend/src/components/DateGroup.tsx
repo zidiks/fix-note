@@ -1,15 +1,16 @@
 import { motion } from 'framer-motion'
-import { Note } from '../api/client.ts'
-import { NoteCard } from './NoteCard.tsx'
+import { Note } from '../api/client'
+import { NoteCard } from './NoteCard'
 
 interface DateGroupProps {
   label: string
   notes: Note[]
   groupIndex: number
   onDeleteNote?: (id: string) => void
+  onSelectNote?: (note: Note) => void
 }
 
-export const DateGroup = ({ label, notes, groupIndex, onDeleteNote }: DateGroupProps) => {
+export const DateGroup = ({ label, notes, groupIndex, onDeleteNote, onSelectNote }: DateGroupProps) => {
   return (
     <motion.section
       initial={{ opacity: 0 }}
@@ -30,11 +31,10 @@ export const DateGroup = ({ label, notes, groupIndex, onDeleteNote }: DateGroupP
             note={note}
             index={index}
             onDelete={onDeleteNote}
+            onSelect={onSelectNote}
           />
         ))}
       </div>
     </motion.section>
   )
 }
-
-

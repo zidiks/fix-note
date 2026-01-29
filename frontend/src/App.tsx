@@ -1,12 +1,17 @@
-import { useEffect } from 'react'
-import { useTelegram } from './hooks/useTelegram.ts'
-import { NotesList } from './components/NotesList.tsx'
-import { SearchBar } from './components/SearchBar.tsx'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { useTelegram } from './hooks/useTelegram'
+import { NotesList } from './components/NotesList'
+import { NoteDetail } from './components/NoteDetail'
+import { SearchBar } from './components/SearchBar'
+import { Note } from './api/client'
+import { useNotes } from './hooks/useNotes'
 
 function App() {
   const { ready, expand, themeParams, colorScheme } = useTelegram()
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const { deleteNote } = useNotes()
 
   useEffect(() => {
     // Initialize Telegram WebApp
@@ -52,6 +57,19 @@ function App() {
     }
   }, [colorScheme, themeParams])
 
+  const handleSelectNote = (note: Note) => {
+    setSelectedNote(note)
+  }
+
+  const handleBack = () => {
+    setSelectedNote(null)
+  }
+
+  const handleDeleteNote = (id: string) => {
+    deleteNote(id)
+    setSelectedNote(null)
+  }
+
   return (
     <div 
       className="min-h-screen"
@@ -60,34 +78,50 @@ function App() {
         color: 'var(--text-primary)'
       }}
     >
-      {/* Header */}
-      <header 
-        className="sticky top-0 z-50 safe-area-top"
-        style={{
-          backgroundColor: 'var(--bg-primary)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-        }}
-      >
-        <div className="px-4 py-3">
-          <h1 
-            className="text-2xl font-bold mb-3"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            Заметки
-          </h1>
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Поиск заметок..."
+      <AnimatePresence mode="wait">
+        {selectedNote ? (
+          <NoteDetail
+            key="detail"
+            note={selectedNote}
+            onBack={handleBack}
+            onDelete={handleDeleteNote}
           />
-        </div>
-      </header>
+        ) : (
+          <div key="list">
+            {/* Header */}
+            <header 
+              className="sticky top-0 z-50 safe-area-top"
+              style={{
+                backgroundColor: 'var(--bg-primary)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+              }}
+            >
+              <div className="px-4 py-3">
+                <h1 
+                  className="text-2xl font-bold mb-3"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Заметки
+                </h1>
+                <SearchBar
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder="Поиск заметок..."
+                />
+              </div>
+            </header>
 
-      {/* Content */}
-      <main className="pb-8 safe-area-bottom">
-        <NotesList searchQuery={searchQuery} />
-      </main>
+            {/* Content */}
+            <main className="pb-8 safe-area-bottom">
+              <NotesList 
+                searchQuery={searchQuery} 
+                onSelectNote={handleSelectNote}
+              />
+            </main>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
