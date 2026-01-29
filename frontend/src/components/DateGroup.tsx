@@ -6,11 +6,10 @@ interface DateGroupProps {
   label: string
   notes: Note[]
   groupIndex: number
-  onDeleteNote?: (id: string) => void
   onSelectNote?: (note: Note) => void
 }
 
-export const DateGroup = ({ label, notes, groupIndex, onDeleteNote, onSelectNote }: DateGroupProps) => {
+export const DateGroup = ({ label, notes, groupIndex, onSelectNote }: DateGroupProps) => {
   return (
     <motion.section
       initial={{ opacity: 0 }}
@@ -30,7 +29,6 @@ export const DateGroup = ({ label, notes, groupIndex, onDeleteNote, onSelectNote
             key={note.id}
             note={note}
             index={index}
-            onDelete={onDeleteNote}
             onSelect={onSelectNote}
           />
         ))}

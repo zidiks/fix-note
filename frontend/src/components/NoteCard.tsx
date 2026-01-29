@@ -8,11 +8,10 @@ interface NoteCardProps {
   note: Note
   index: number
   onSelect?: (note: Note) => void
-  onDelete?: (id: string) => void
 }
 
-export const NoteCard = ({ note, index, onSelect, onDelete }: NoteCardProps) => {
-  const { hapticImpact, hapticNotification, showConfirm } = useTelegram()
+export const NoteCard = ({ note, index, onSelect }: NoteCardProps) => {
+  const { hapticImpact } = useTelegram()
 
   const isVoice = note.source === 'voice'
   const icon = isVoice ? '🎤' : '📝'
@@ -36,17 +35,6 @@ export const NoteCard = ({ note, index, onSelect, onDelete }: NoteCardProps) => 
   const handleClick = () => {
     hapticImpact('light')
     onSelect?.(note)
-  }
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    hapticImpact('medium')
-    showConfirm('Удалить заметку?', (confirmed) => {
-      if (confirmed && onDelete) {
-        hapticNotification('success')
-        onDelete(note.id)
-      }
-    })
   }
 
   return (

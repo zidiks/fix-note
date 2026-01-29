@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotes, useSearchNotes } from '../hooks/useNotes'
 import { DateGroup } from './DateGroup'
-import { NoteCard } from './NoteCard'
 import { useTelegram } from '../hooks/useTelegram'
 import { Note } from '../api/client'
 
@@ -11,23 +10,12 @@ interface NotesListProps {
 }
 
 export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
-  const { hapticNotification } = useTelegram()
-  const { groupedNotes, isLoading, deleteNote } = useNotes()
+  const { hapticImpact } = useTelegram()
+  const { groupedNotes, isLoading } = useNotes()
   const { results: searchResults, isLoading: isSearching } = useSearchNotes(searchQuery)
 
   const isSearchMode = searchQuery.length >= 2
   const showLoading = isLoading || (isSearchMode && isSearching)
-
-  const handleDelete = (id: string) => {
-    deleteNote(id, {
-      onSuccess: () => {
-        hapticNotification('success')
-      },
-      onError: () => {
-        hapticNotification('error')
-      },
-    })
-  }
 
   // Loading state
   if (showLoading) {
@@ -81,6 +69,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
               transition={{ duration: 0.2, delay: index * 0.05 }}
               className="ios-card p-4 mx-4 mb-2 cursor-pointer haptic-tap"
               onClick={() => {
+                hapticImpact('light')
                 // Convert search result to Note-like object for viewing
                 if (onSelectNote) {
                   onSelectNote({
@@ -166,7 +155,6 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
             label={group.label}
             notes={group.notes}
             groupIndex={groupIndex}
-            onDeleteNote={handleDelete}
             onSelectNote={onSelectNote}
           />
         ))}
