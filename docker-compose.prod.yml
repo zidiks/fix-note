@@ -1,0 +1,58 @@
+version: '3.8'
+
+# Production config for servers with existing Nginx Proxy Manager
+# Uses non-conflicting ports: 8010 (backend), 3010 (frontend)
+
+services:
+  backend:
+    build: ./backend
+    container_name: voice-notes-backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8010:8000"
+    depends_on:
+      - whisper
+    networks:
+      - voice-notes-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: voice-notes-frontend
+    restart: unless-stopped
+    ports:
+      - "3010:80"
+    depends_on:
+      - backend
+    networks:
+      - voice-notes-net
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: voice-notes-whisper
+    restart: unless-stopped
+    environment:
+      - ASR_MODEL=base
+      - ASR_ENGINE=faster_whisper
+    volumes:
+      - whisper-models:/root/.cache/huggingface
+    networks:
+      - voice-notes-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  voice-notes-net:
+    driver: bridge
+
+volumes:
+  whisper-models:
+

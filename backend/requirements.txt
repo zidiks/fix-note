@@ -1,0 +1,22 @@
+# Core
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+pydantic>=2.4.1,<2.6
+pydantic-settings>=2.1.0,<3.0
+python-multipart==0.0.9
+
+# Telegram
+aiogram==3.4.1
+
+# Supabase - pin to older stable version with compatible deps
+supabase==2.0.3
+httpx>=0.24.0,<0.26
+
+# AI Services
+openai==1.12.0
+
+# Audio processing
+aiofiles==23.2.1
+
+# Utils
+python-dotenv==1.0.1
