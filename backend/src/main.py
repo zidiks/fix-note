@@ -4,11 +4,10 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .api import app as api_app
+from .api import router as api_router
 from .bot import start_bot, stop_bot, dp, bot
 
 # Configure logging
@@ -53,8 +52,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Mount API routes
-app.mount("/api", api_app)
+# CORS for Mini App
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API router
+app.include_router(api_router)
 
 
 @app.get("/")
@@ -86,5 +94,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-
-

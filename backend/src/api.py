@@ -5,7 +5,7 @@ from urllib.parse import parse_qs
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Query
+from fastapi import APIRouter, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -16,21 +16,8 @@ from .services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI
-app = FastAPI(
-    title="Voice Notes API",
-    description="API for Voice Notes Telegram Mini App",
-    version="1.0.0"
-)
-
-# CORS for Mini App
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Telegram Mini App can be from any origin
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Create router instead of app
+router = APIRouter(prefix="/api", tags=["api"])
 
 # Services
 notes_service = NotesService()
@@ -139,13 +126,13 @@ class SearchResponse(BaseModel):
 
 
 # API Routes
-@app.get("/health")
+@router.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
 
 
-@app.get("/notes", response_model=NotesListResponse)
+@router.get("/notes", response_model=NotesListResponse)
 async def get_notes(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -160,7 +147,7 @@ async def get_notes(
     return NotesListResponse(notes=notes, total=len(all_notes))
 
 
-@app.get("/notes/{note_id}", response_model=Note)
+@router.get("/notes/{note_id}", response_model=Note)
 async def get_note(
     note_id: UUID,
     user=Depends(get_current_user)
@@ -172,7 +159,7 @@ async def get_note(
     return note
 
 
-@app.post("/notes", response_model=Note)
+@router.post("/notes", response_model=Note)
 async def create_note(
     note_data: NoteCreate,
     user=Depends(get_current_user)
@@ -186,7 +173,7 @@ async def create_note(
     return note
 
 
-@app.put("/notes/{note_id}", response_model=Note)
+@router.put("/notes/{note_id}", response_model=Note)
 async def update_note(
     note_id: UUID,
     note_data: NoteUpdate,
@@ -204,7 +191,7 @@ async def update_note(
     return note
 
 
-@app.delete("/notes/{note_id}")
+@router.delete("/notes/{note_id}")
 async def delete_note(
     note_id: UUID,
     user=Depends(get_current_user)
@@ -216,7 +203,7 @@ async def delete_note(
     return {"success": True}
 
 
-@app.post("/notes/search", response_model=SearchResponse)
+@router.post("/notes/search", response_model=SearchResponse)
 async def search_notes(
     search: SearchQuery,
     user=Depends(get_current_user)
@@ -231,8 +218,7 @@ async def search_notes(
     return SearchResponse(results=results, query=search.query)
 
 
-@app.get("/stats", response_model=StatsResponse)
+@router.get("/stats", response_model=StatsResponse)
 async def get_stats(user=Depends(get_current_user)):
     """Get user statistics."""
     return await notes_service.get_stats(user.id)
-
