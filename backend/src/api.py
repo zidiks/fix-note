@@ -139,13 +139,13 @@ class SearchResponse(BaseModel):
 
 
 # API Routes
-@app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
 
 
-@app.get("/api/notes", response_model=NotesListResponse)
+@app.get("/notes", response_model=NotesListResponse)
 async def get_notes(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -160,7 +160,7 @@ async def get_notes(
     return NotesListResponse(notes=notes, total=len(all_notes))
 
 
-@app.get("/api/notes/{note_id}", response_model=Note)
+@app.get("/notes/{note_id}", response_model=Note)
 async def get_note(
     note_id: UUID,
     user=Depends(get_current_user)
@@ -172,7 +172,7 @@ async def get_note(
     return note
 
 
-@app.post("/api/notes", response_model=Note)
+@app.post("/notes", response_model=Note)
 async def create_note(
     note_data: NoteCreate,
     user=Depends(get_current_user)
@@ -186,7 +186,7 @@ async def create_note(
     return note
 
 
-@app.put("/api/notes/{note_id}", response_model=Note)
+@app.put("/notes/{note_id}", response_model=Note)
 async def update_note(
     note_id: UUID,
     note_data: NoteUpdate,
@@ -204,7 +204,7 @@ async def update_note(
     return note
 
 
-@app.delete("/api/notes/{note_id}")
+@app.delete("/notes/{note_id}")
 async def delete_note(
     note_id: UUID,
     user=Depends(get_current_user)
@@ -216,7 +216,7 @@ async def delete_note(
     return {"success": True}
 
 
-@app.post("/api/notes/search", response_model=SearchResponse)
+@app.post("/notes/search", response_model=SearchResponse)
 async def search_notes(
     search: SearchQuery,
     user=Depends(get_current_user)
@@ -231,7 +231,7 @@ async def search_notes(
     return SearchResponse(results=results, query=search.query)
 
 
-@app.get("/api/stats", response_model=StatsResponse)
+@app.get("/stats", response_model=StatsResponse)
 async def get_stats(user=Depends(get_current_user)):
     """Get user statistics."""
     return await notes_service.get_stats(user.id)
