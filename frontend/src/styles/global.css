@@ -4,7 +4,7 @@
 
 /* CSS Variables for iOS-like theme */
 :root {
-  /* Light mode */
+  /* Light mode (default) */
   --bg-primary: #F2F2F7;
   --bg-secondary: #FFFFFF;
   --text-primary: #000000;
@@ -17,7 +17,7 @@
   --success: #34C759;
   --warning: #FF9500;
   
-  /* Telegram WebApp support */
+  /* Telegram WebApp support - will be overridden by JS */
   --tg-theme-bg-color: var(--bg-primary);
   --tg-theme-text-color: var(--text-primary);
   --tg-theme-hint-color: var(--text-secondary);
@@ -27,7 +27,8 @@
   --tg-theme-secondary-bg-color: var(--bg-secondary);
 }
 
-/* Dark mode */
+/* Dark mode via class */
+:root.dark,
 .dark {
   --bg-primary: #000000;
   --bg-secondary: #1C1C1E;
@@ -35,18 +36,34 @@
   --text-secondary: #8E8E93;
   --text-tertiary: #636366;
   --separator: #38383A;
+  --destructive: #FF453A;
+  --success: #30D158;
+  --warning: #FF9F0A;
 }
 
-/* Apply Telegram theme if available */
+/* Also support prefers-color-scheme for non-Telegram browsers */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg-primary: #000000;
+    --bg-secondary: #1C1C1E;
+    --text-primary: #FFFFFF;
+    --text-secondary: #8E8E93;
+    --text-tertiary: #636366;
+    --separator: #38383A;
+  }
+}
+
+/* Apply theme to body */
 body {
-  background-color: var(--tg-theme-bg-color, var(--bg-primary));
-  color: var(--tg-theme-text-color, var(--text-primary));
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   min-height: 100vh;
   min-height: 100dvh;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Safe area padding for iOS */
@@ -69,6 +86,11 @@ body {
   background-color: var(--bg-secondary);
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.2s ease;
+}
+
+.dark .ios-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Section header */
@@ -106,6 +128,10 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.dark .search-bar {
+  background-color: rgba(142, 142, 147, 0.24);
 }
 
 .search-bar input {
@@ -166,6 +192,16 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 4px;
+}
+
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    rgba(142, 142, 147, 0.2) 50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 200% 100%;
 }
 
 @keyframes shimmer {
@@ -234,4 +270,26 @@ body {
   color: var(--success);
 }
 
+.dark .badge-voice {
+  background-color: rgba(0, 122, 255, 0.2);
+}
 
+.dark .badge-text {
+  background-color: rgba(52, 199, 89, 0.2);
+}
+
+/* Loading spinner */
+.spinner {
+  border: 2px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
