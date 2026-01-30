@@ -1,26 +1,77 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import { useTelegram } from './hooks/useTelegram'
 import { NotesList } from './components/NotesList'
 import { NoteDetail } from './components/NoteDetail'
+import { SharedNoteView } from './components/SharedNoteView'
 import { SearchBar } from './components/SearchBar'
-import { Note } from './api/client'
+import { Note, api } from './api/client'
 import { useNotes } from './hooks/useNotes'
 
+type ViewState = 'list' | 'detail' | 'shared'
+
 function App() {
-  const { ready, expand, themeParams, colorScheme } = useTelegram()
+  const { 
+    ready, 
+    expand, 
+    themeParams, 
+    colorScheme, 
+    startParam,
+    showBackButton,
+    hideBackButton,
+    close
+  } = useTelegram()
+  
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const [viewState, setViewState] = useState<ViewState>('list')
+  const [shareToken, setShareToken] = useState<string | null>(null)
   const { deleteNote } = useNotes()
 
+  // Check if opened via share link (start_param)
+  const { data: sharedData, isLoading: isLoadingShared } = useQuery({
+    queryKey: ['shared', shareToken],
+    queryFn: () => api.getSharedNote(shareToken!),
+    enabled: !!shareToken,
+  })
+
+  // Initialize app
   useEffect(() => {
-    // Initialize Telegram WebApp
     ready()
     expand()
-  }, [ready, expand])
+    
+    // Check for share token in start_param
+    if (startParam) {
+      setShareToken(startParam)
+      setViewState('shared')
+    }
+  }, [ready, expand, startParam])
 
+  // Handle Telegram BackButton
+  const handleBack = useCallback(() => {
+    if (viewState === 'detail') {
+      setSelectedNote(null)
+      setViewState('list')
+    } else if (viewState === 'shared') {
+      // Close the app when viewing shared note
+      close()
+    }
+  }, [viewState, close])
+
+  // Manage BackButton visibility
   useEffect(() => {
-    // Detect dark mode from Telegram colorScheme
+    if (viewState === 'list') {
+      hideBackButton()
+    } else {
+      showBackButton(handleBack)
+    }
+    
+    return () => hideBackButton()
+  }, [viewState, showBackButton, hideBackButton, handleBack])
+
+  // Apply theme
+  useEffect(() => {
     const isDarkMode = colorScheme === 'dark'
     
     if (isDarkMode) {
@@ -29,7 +80,6 @@ function App() {
       document.documentElement.classList.remove('dark')
     }
 
-    // Apply Telegram theme colors as CSS variables
     if (themeParams) {
       if (themeParams.bg_color) {
         document.documentElement.style.setProperty('--tg-theme-bg-color', themeParams.bg_color)
@@ -59,15 +109,37 @@ function App() {
 
   const handleSelectNote = (note: Note) => {
     setSelectedNote(note)
+    setViewState('detail')
   }
 
-  const handleBack = () => {
+  const handleBackToList = () => {
     setSelectedNote(null)
+    setViewState('list')
   }
 
   const handleDeleteNote = (id: string) => {
     deleteNote(id)
     setSelectedNote(null)
+    setViewState('list')
+  }
+
+  // Render shared note view
+  if (viewState === 'shared') {
+    return (
+      <div 
+        className="min-h-screen"
+        style={{
+          backgroundColor: 'var(--bg-primary)',
+          color: 'var(--text-primary)'
+        }}
+      >
+        <SharedNoteView 
+          data={sharedData} 
+          isLoading={isLoadingShared}
+          shareToken={shareToken}
+        />
+      </div>
+    )
   }
 
   return (
@@ -79,11 +151,11 @@ function App() {
       }}
     >
       <AnimatePresence mode="wait">
-        {selectedNote ? (
+        {selectedNote && viewState === 'detail' ? (
           <NoteDetail
             key="detail"
             note={selectedNote}
-            onBack={handleBack}
+            onBack={handleBackToList}
             onDelete={handleDeleteNote}
           />
         ) : (

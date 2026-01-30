@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime, timedelta
 
 from ..db.supabase import get_supabase_client
-from ..db.models import User, UserCreate, Note, NoteCreate, NoteUpdate, StatsResponse
+from ..db.models import User, UserCreate, Note, NoteCreate, NoteUpdate, StatsResponse, PublicNote, FTSSearchResult
 
 
 class NotesService:
@@ -152,5 +152,73 @@ class NotesService:
             notes_this_week=this_week,
             notes_this_month=this_month
         )
+
+    # Share operations
+    async def generate_share_token(self, note_id: UUID, user_id: UUID, is_public: bool = False) -> Optional[dict]:
+        """Generate or get share token for a note."""
+        # First check if note belongs to user
+        note = await self.get_note(note_id, user_id)
+        if not note:
+            return None
+        
+        # If already has token and same public status, return existing
+        if note.share_token and note.is_public == is_public:
+            return {"share_token": note.share_token, "is_public": note.is_public}
+        
+        # Generate new token
+        result = self.client.rpc("generate_share_token").execute()
+        new_token = result.data if isinstance(result.data, str) else None
+        
+        if not new_token:
+            # Fallback: generate in Python
+            import secrets
+            new_token = secrets.token_hex(16)
+        
+        # Update note
+        update_result = self.client.table("notes").update({
+            "share_token": new_token,
+            "is_public": is_public
+        }).eq("id", str(note_id)).eq("user_id", str(user_id)).execute()
+        
+        if update_result.data:
+            return {"share_token": new_token, "is_public": is_public}
+        return None
+
+    async def get_note_by_share_token(self, share_token: str) -> Optional[dict]:
+        """Get note by share token with ownership info."""
+        result = self.client.table("notes").select("*, users!inner(telegram_id)").eq(
+            "share_token", share_token
+        ).execute()
+        
+        if result.data:
+            note_data = result.data[0]
+            owner_telegram_id = note_data.get("users", {}).get("telegram_id")
+            # Remove users join from note data
+            note_data.pop("users", None)
+            return {
+                "note": Note(**note_data),
+                "owner_telegram_id": owner_telegram_id
+            }
+        return None
+
+    async def revoke_share_token(self, note_id: UUID, user_id: UUID) -> bool:
+        """Revoke share token for a note."""
+        result = self.client.table("notes").update({
+            "share_token": None,
+            "is_public": False
+        }).eq("id", str(note_id)).eq("user_id", str(user_id)).execute()
+        
+        return len(result.data) > 0
+
+    # Full-text search
+    async def search_notes_fts(self, user_id: UUID, query: str, limit: int = 20) -> List[FTSSearchResult]:
+        """Full-text search notes."""
+        result = self.client.rpc("search_notes_fts", {
+            "search_query": query,
+            "match_user_id": str(user_id),
+            "match_limit": limit
+        }).execute()
+        
+        return [FTSSearchResult(**r) for r in result.data]
 
 

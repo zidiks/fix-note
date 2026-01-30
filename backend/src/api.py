@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .config import settings
-from .db.models import Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse
+from .db.models import Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse, PublicNote, FTSSearchResult, ShareResponse
 from .services.notes_service import NotesService
 from .services.rag_service import RAGService
 
@@ -125,6 +125,17 @@ class SearchResponse(BaseModel):
     query: str
 
 
+class FTSSearchResponse(BaseModel):
+    results: List[FTSSearchResult]
+    query: str
+
+
+class SharedNoteResponse(BaseModel):
+    note: PublicNote
+    is_owner: bool
+    can_edit: bool
+
+
 # API Routes
 @router.get("/health")
 async def health_check():
@@ -222,3 +233,98 @@ async def search_notes(
 async def get_stats(user=Depends(get_current_user)):
     """Get user statistics."""
     return await notes_service.get_stats(user.id)
+
+
+# Full-text search (faster, no AI required)
+@router.post("/notes/search/fts", response_model=FTSSearchResponse)
+async def search_notes_fts(
+    search: SearchQuery,
+    user=Depends(get_current_user)
+):
+    """Full-text search over notes (PostgreSQL FTS)."""
+    results = await notes_service.search_notes_fts(
+        user_id=user.id,
+        query=search.query,
+        limit=search.limit
+    )
+    return FTSSearchResponse(results=results, query=search.query)
+
+
+# Share functionality
+@router.post("/notes/{note_id}/share", response_model=ShareResponse)
+async def create_share_link(
+    note_id: UUID,
+    is_public: bool = Query(default=False, description="Make note publicly viewable"),
+    user=Depends(get_current_user)
+):
+    """Generate a share link for a note."""
+    result = await notes_service.generate_share_token(note_id, user.id, is_public)
+    if not result:
+        raise HTTPException(status_code=404, detail="Note not found")
+    
+    # Build share URL
+    share_url = f"{settings.public_url}/note/{result['share_token']}"
+    
+    return ShareResponse(
+        share_url=share_url,
+        share_token=result['share_token'],
+        is_public=result['is_public']
+    )
+
+
+@router.delete("/notes/{note_id}/share")
+async def revoke_share_link(
+    note_id: UUID,
+    user=Depends(get_current_user)
+):
+    """Revoke share link for a note."""
+    success = await notes_service.revoke_share_token(note_id, user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"success": True}
+
+
+# Public access to shared notes (no auth required)
+@router.get("/shared/{share_token}", response_model=SharedNoteResponse)
+async def get_shared_note(
+    share_token: str,
+    x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data")
+):
+    """Get a shared note by token. Returns ownership info if authenticated."""
+    result = await notes_service.get_note_by_share_token(share_token)
+    if not result:
+        raise HTTPException(status_code=404, detail="Note not found or link expired")
+    
+    note = result["note"]
+    owner_telegram_id = result["owner_telegram_id"]
+    
+    # Check if current user is the owner
+    is_owner = False
+    can_edit = False
+    
+    if x_telegram_init_data:
+        user_data = validate_telegram_init_data(x_telegram_init_data)
+        if user_data:
+            current_telegram_id = user_data.get("id")
+            is_owner = current_telegram_id == owner_telegram_id
+            can_edit = is_owner  # Only owner can edit
+    
+    # If not public and not owner, deny access
+    if not note.is_public and not is_owner:
+        raise HTTPException(status_code=403, detail="Access denied. This note is private.")
+    
+    # Return public note data
+    public_note = PublicNote(
+        id=note.id,
+        content=note.content,
+        summary=note.summary,
+        source=note.source,
+        duration_seconds=note.duration_seconds,
+        created_at=note.created_at
+    )
+    
+    return SharedNoteResponse(
+        note=public_note,
+        is_owner=is_owner,
+        can_edit=can_edit
+    )

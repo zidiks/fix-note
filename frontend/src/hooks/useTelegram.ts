@@ -19,6 +19,14 @@ interface ThemeParams {
   secondary_bg_color?: string
 }
 
+interface BackButton {
+  isVisible: boolean
+  onClick: (callback: () => void) => void
+  offClick: (callback: () => void) => void
+  show: () => void
+  hide: () => void
+}
+
 interface WebApp {
   initData: string
   initDataUnsafe: {
@@ -26,6 +34,7 @@ interface WebApp {
     query_id?: string
     auth_date?: number
     hash?: string
+    start_param?: string
   }
   version: string
   platform: string
@@ -36,6 +45,7 @@ interface WebApp {
   viewportStableHeight: number
   headerColor: string
   backgroundColor: string
+  BackButton: BackButton
   ready: () => void
   expand: () => void
   close: () => void
@@ -46,6 +56,7 @@ interface WebApp {
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void
   openTelegramLink: (url: string) => void
   switchInlineQuery: (query: string, choose_chat_types?: string[]) => void
+  shareUrl: (url: string, text?: string) => void
   HapticFeedback: {
     impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void
@@ -79,6 +90,8 @@ export const useTelegram = () => {
   const initData = useMemo(() => tg?.initData || '', [tg])
   const themeParams = useMemo(() => tg?.themeParams, [tg])
   const colorScheme = useMemo(() => tg?.colorScheme || 'light', [tg])
+  const startParam = useMemo(() => tg?.initDataUnsafe?.start_param, [tg])
+  const backButton = useMemo(() => tg?.BackButton, [tg])
 
   const ready = useCallback(() => {
     tg?.ready()
@@ -171,12 +184,46 @@ export const useTelegram = () => {
     }
   }, [tg, shareText])
 
+  // Share URL via Telegram native share
+  const shareUrl = useCallback((url: string, text?: string) => {
+    if (tg?.shareUrl) {
+      tg.shareUrl(url, text)
+    } else {
+      // Fallback: open Telegram share link
+      const shareLink = `https://t.me/share/url?url=${encodeURIComponent(url)}${text ? `&text=${encodeURIComponent(text)}` : ''}`
+      tg?.openTelegramLink(shareLink)
+    }
+  }, [tg])
+
+  // Show/hide back button
+  const showBackButton = useCallback((callback: () => void) => {
+    if (tg?.BackButton) {
+      tg.BackButton.onClick(callback)
+      tg.BackButton.show()
+    }
+  }, [tg])
+
+  const hideBackButton = useCallback(() => {
+    if (tg?.BackButton) {
+      tg.BackButton.hide()
+    }
+  }, [tg])
+
+  const onBackButtonClick = useCallback((callback: () => void) => {
+    if (tg?.BackButton) {
+      tg.BackButton.offClick(() => {})
+      tg.BackButton.onClick(callback)
+    }
+  }, [tg])
+
   return {
     tg,
     user,
     initData,
     themeParams,
     colorScheme,
+    startParam,
+    backButton,
     ready,
     close,
     expand,
@@ -189,6 +236,10 @@ export const useTelegram = () => {
     openLink,
     openTelegramLink,
     shareText,
+    shareUrl,
     forwardToChat,
+    showBackButton,
+    hideBackButton,
+    onBackButtonClick,
   }
 }

@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { Note } from '../api/client'
@@ -6,31 +5,35 @@ import { useTelegram } from '../hooks/useTelegram'
 
 interface NoteCardProps {
   note: Note
-  index: number
   onSelect?: (note: Note) => void
+  isFirst?: boolean
+  isLast?: boolean
 }
 
-export const NoteCard = ({ note, index, onSelect }: NoteCardProps) => {
+export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => {
   const { hapticImpact } = useTelegram()
 
-  const isVoice = note.source === 'voice'
-  const icon = isVoice ? '🎤' : '📝'
-
-  // Get preview text
+  // Get title - first line or summary
   const title = note.summary
-    ? note.summary.split('\n')[0].slice(0, 60)
-    : note.content.split('\n')[0].slice(0, 60)
+    ? note.summary.split('\n')[0].slice(0, 50)
+    : note.content.split('\n')[0].slice(0, 50)
 
-  const preview = note.summary
-    ? note.summary.slice(title.length, title.length + 100)
-    : note.content.slice(title.length, title.length + 100)
+  // Get subtitle - remaining content
+  const subtitle = note.summary
+    ? note.summary.split('\n').slice(1).join(' ').slice(0, 80)
+    : note.content.split('\n').slice(1).join(' ').slice(0, 80)
 
-  // Format date
+  // Format date like Apple Notes
   const date = new Date(note.created_at)
-  const isToday = new Date().toDateString() === date.toDateString()
-  const formattedDate = isToday
-    ? format(date, 'HH:mm')
-    : format(date, 'd MMM, HH:mm', { locale: ru })
+  const today = new Date()
+  const isToday = date.toDateString() === today.toDateString()
+  
+  let formattedDate: string
+  if (isToday) {
+    formattedDate = format(date, 'HH:mm')
+  } else {
+    formattedDate = format(date, 'dd.MM.yyyy', { locale: ru })
+  }
 
   const handleClick = () => {
     hapticImpact('light')
@@ -38,84 +41,60 @@ export const NoteCard = ({ note, index, onSelect }: NoteCardProps) => {
   }
 
   return (
-    <motion.div
-      className="note-card ios-card p-4 mx-4 mb-2 haptic-tap cursor-pointer"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.05 }}
+    <div
+      className="active:opacity-70 transition-opacity cursor-pointer"
       onClick={handleClick}
       style={{
-        backgroundColor: 'var(--bg-secondary)'
+        backgroundColor: 'var(--bg-secondary)',
+        borderTopLeftRadius: isFirst ? '12px' : 0,
+        borderTopRightRadius: isFirst ? '12px' : 0,
+        borderBottomLeftRadius: isLast ? '12px' : 0,
+        borderBottomRightRadius: isLast ? '12px' : 0,
       }}
     >
-      <div className="flex items-start gap-3">
-        {/* Icon */}
-        <div className="text-2xl flex-shrink-0 mt-0.5">
-          {icon}
-        </div>
+      <div className="px-4 py-3">
+        {/* Title */}
+        <h3
+          className="font-semibold text-base leading-tight truncate"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          {title || 'Без названия'}
+        </h3>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Title */}
-          <h3
-            className="font-semibold text-base leading-tight truncate"
-            style={{ color: 'var(--text-primary)' }}
+        {/* Subtitle line */}
+        <div className="flex items-center gap-2 mt-0.5">
+          <span
+            className="text-sm"
+            style={{ color: 'var(--text-secondary)' }}
           >
-            {title || 'Без названия'}
-            {title.length >= 60 && '...'}
-          </h3>
-
-          {/* Preview */}
-          {preview && (
-            <p
-              className="text-sm mt-1 line-clamp-2"
+            {formattedDate}
+          </span>
+          {subtitle && (
+            <span
+              className="text-sm truncate flex-1"
               style={{ color: 'var(--text-secondary)' }}
             >
-              {preview}
-              {preview.length >= 100 && '...'}
-            </p>
+              {subtitle}
+            </span>
           )}
-
-          {/* Footer */}
-          <div className="flex items-center gap-2 mt-2">
-            {/* Source badge */}
-            <span className={`badge ${isVoice ? 'badge-voice' : 'badge-text'}`}>
-              {isVoice ? 'Голос' : 'Текст'}
-            </span>
-
-            {/* Duration for voice notes */}
-            {isVoice && note.duration_seconds && (
-              <span
-                className="text-xs"
-                style={{ color: 'var(--text-tertiary)' }}
-              >
-                {Math.floor(note.duration_seconds / 60)}:{String(note.duration_seconds % 60).padStart(2, '0')}
-              </span>
-            )}
-
-            {/* Date */}
+          {!subtitle && (
             <span
-              className="text-xs ml-auto"
-              style={{ color: 'var(--text-tertiary)' }}
+              className="text-sm"
+              style={{ color: 'var(--text-secondary)' }}
             >
-              {formattedDate}
+              No additional text
             </span>
-
-            {/* Chevron */}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </div>
+          )}
         </div>
       </div>
-    </motion.div>
+
+      {/* Separator */}
+      {!isLast && (
+        <div 
+          className="h-px ml-4"
+          style={{ backgroundColor: 'var(--separator)' }}
+        />
+      )}
+    </div>
   )
 }

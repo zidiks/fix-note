@@ -20,12 +20,15 @@ const groupNotesByDate = (notes: Note[]): GroupedNotes[] => {
   const groups: Map<string, Note[]> = new Map()
 
   const getGroupKey = (date: Date): string => {
-    if (isToday(date)) return 'Сегодня'
-    if (isYesterday(date)) return 'Вчера'
-    if (isThisWeek(date, { weekStartsOn: 1 })) return 'На этой неделе'
-    if (isThisMonth(date)) return 'В этом месяце'
+    const now = new Date()
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (isToday(date)) return 'Today'
+    if (isYesterday(date)) return 'Yesterday'
+    if (diffDays <= 7 && isThisWeek(date, { weekStartsOn: 1 })) return 'Previous 7 Days'
+    if (diffDays <= 30) return 'Previous 30 Days'
 
-    // Group by month
+    // Group by month for older notes
     return format(startOfMonth(date), 'LLLL yyyy', { locale: ru })
   }
 
@@ -39,8 +42,8 @@ const groupNotesByDate = (notes: Note[]): GroupedNotes[] => {
     groups.get(key)!.push(note)
   })
 
-  // Convert to array with correct order
-  const orderedKeys = ['Сегодня', 'Вчера', 'На этой неделе', 'В этом месяце']
+  // Convert to array with correct order - Apple Notes style
+  const orderedKeys = ['Today', 'Yesterday', 'Previous 7 Days', 'Previous 30 Days']
   const result: GroupedNotes[] = []
 
   // Add standard groups first
@@ -101,10 +104,26 @@ export const useNotes = () => {
 }
 
 export const useSearchNotes = (query: string) => {
+  // Use FTS for fast local search
   const { data, isLoading, error } = useQuery({
-    queryKey: ['notes', 'search', query],
-    queryFn: () => api.searchNotes(query),
+    queryKey: ['notes', 'search', 'fts', query],
+    queryFn: () => api.searchNotesFTS(query),
     enabled: query.length >= 2,
+  })
+
+  return {
+    results: data?.results || [],
+    isLoading,
+    error,
+  }
+}
+
+// Semantic search (slower, AI-powered)
+export const useSemanticSearch = (query: string) => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['notes', 'search', 'semantic', query],
+    queryFn: () => api.searchNotes(query),
+    enabled: query.length >= 3,
   })
 
   return {

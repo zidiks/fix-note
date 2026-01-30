@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { Note } from '../api/client'
+import { useMutation } from '@tanstack/react-query'
+import { Note, api } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
 
 interface NoteDetailProps {
@@ -11,42 +13,75 @@ interface NoteDetailProps {
 }
 
 export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
-  const { hapticImpact, hapticNotification, showConfirm, shareText } = useTelegram()
+  const { hapticImpact, hapticNotification, showConfirm, shareText, shareUrl, showPopup } = useTelegram()
+  const [isSharing, setIsSharing] = useState(false)
 
   const isVoice = note.source === 'voice'
   const icon = isVoice ? '🎤' : '📝'
 
-  // Format date
   const date = new Date(note.created_at)
   const formattedDate = format(date, "d MMMM yyyy 'в' HH:mm", { locale: ru })
 
-  // Format duration
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  const handleShare = () => {
+  // Share link mutation
+  const shareMutation = useMutation({
+    mutationFn: (isPublic: boolean) => api.createShareLink(note.id, isPublic),
+    onSuccess: (data) => {
+      setIsSharing(false)
+      hapticNotification('success')
+      
+      // Use native Telegram share
+      shareUrl(data.share_url, note.summary || 'Заметка из FixNote')
+    },
+    onError: () => {
+      setIsSharing(false)
+      hapticNotification('error')
+    }
+  })
+
+  const handleShareLink = () => {
     hapticImpact('medium')
     
-    // Prepare share text
-    let shareContent = ''
+    showPopup({
+      title: 'Поделиться заметкой',
+      message: 'Выберите тип доступа для получателя:',
+      buttons: [
+        { id: 'public', type: 'default', text: '🌍 Публичная ссылка' },
+        { id: 'private', type: 'default', text: '🔒 Только для меня' },
+        { id: 'cancel', type: 'cancel', text: 'Отмена' }
+      ]
+    }, (buttonId) => {
+      if (buttonId === 'public') {
+        setIsSharing(true)
+        shareMutation.mutate(true)
+      } else if (buttonId === 'private') {
+        setIsSharing(true)
+        shareMutation.mutate(false)
+      }
+    })
+  }
+
+  const handleCopyText = () => {
+    hapticImpact('medium')
     
+    let shareContent = ''
     if (note.summary) {
       shareContent = `📝 ${note.summary}`
     } else {
       shareContent = note.content
     }
     
-    // Add source info
     if (isVoice && note.duration_seconds) {
       shareContent += `\n\n🎤 Голосовая заметка (${formatDuration(note.duration_seconds)})`
     }
     
     shareContent += `\n\n📅 ${formattedDate}`
     
-    // Share via Telegram
     shareText(shareContent)
   }
 
@@ -56,14 +91,8 @@ export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
       if (confirmed && onDelete) {
         hapticNotification('success')
         onDelete(note.id)
-        onBack()
       }
     })
-  }
-
-  const handleBack = () => {
-    hapticImpact('light')
-    onBack()
   }
 
   return (
@@ -75,7 +104,7 @@ export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
       transition={{ duration: 0.2 }}
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
-      {/* Header */}
+      {/* Header - без кнопки назад, используем Telegram BackButton */}
       <header
         className="sticky top-0 z-50 safe-area-top"
         style={{
@@ -85,30 +114,44 @@ export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
         }}
       >
         <div className="flex items-center justify-between px-4 py-3">
-          {/* Back button */}
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-1 haptic-tap"
-            style={{ color: 'var(--accent)' }}
+          <h1 
+            className="text-lg font-semibold"
+            style={{ color: 'var(--text-primary)' }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            <span className="text-base">Назад</span>
-          </button>
+            Заметка
+          </h1>
 
           {/* Actions */}
-          <div className="flex items-center gap-3">
-            {/* Share button */}
+          <div className="flex items-center gap-2">
+            {/* Share link button */}
             <button
-              onClick={handleShare}
+              onClick={handleShareLink}
+              disabled={isSharing}
+              className="p-2 haptic-tap rounded-full"
+              style={{ color: 'var(--accent)' }}
+            >
+              {isSharing ? (
+                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+              )}
+            </button>
+
+            {/* Copy text button */}
+            <button
+              onClick={handleCopyText}
               className="p-2 haptic-tap rounded-full"
               style={{ color: 'var(--accent)' }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                <polyline points="16 6 12 2 8 6" />
-                <line x1="12" y1="2" x2="12" y2="15" />
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
               </svg>
             </button>
 
@@ -200,9 +243,10 @@ export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
           </div>
         </div>
 
-        {/* Share button (bottom) */}
+        {/* Share link button (bottom) */}
         <motion.button
-          onClick={handleShare}
+          onClick={handleShareLink}
+          disabled={isSharing}
           className="w-full mt-6 py-3 px-4 rounded-xl font-semibold haptic-tap flex items-center justify-center gap-2"
           style={{
             backgroundColor: 'var(--accent)',
@@ -210,14 +254,25 @@ export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
           }}
           whileTap={{ scale: 0.98 }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-          </svg>
-          Скопировать и поделиться
+          {isSharing ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Создание ссылки...
+            </>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+              Поделиться ссылкой
+            </>
+          )}
         </motion.button>
       </main>
     </motion.div>
   )
 }
-

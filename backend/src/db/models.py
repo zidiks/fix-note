@@ -31,8 +31,20 @@ class Note(BaseModel):
     summary: Optional[str] = None
     source: str = "text"  # 'voice' | 'text'
     duration_seconds: Optional[int] = None
+    share_token: Optional[str] = None
+    is_public: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class PublicNote(BaseModel):
+    """Public note model (limited fields)."""
+    id: UUID
+    content: str
+    summary: Optional[str] = None
+    source: str = "text"
+    duration_seconds: Optional[int] = None
+    created_at: datetime
 
 
 class NoteCreate(BaseModel):
@@ -62,6 +74,24 @@ class SearchResult(BaseModel):
     summary: Optional[str] = None
     similarity: float
     created_at: datetime
+
+
+class FTSSearchResult(BaseModel):
+    """Full-text search result model."""
+    id: UUID
+    content: str
+    summary: Optional[str] = None
+    source: str = "text"
+    duration_seconds: Optional[int] = None
+    created_at: datetime
+    rank: float
+
+
+class ShareResponse(BaseModel):
+    """Share link response."""
+    share_url: str
+    share_token: str
+    is_public: bool
 
 
 class NoteWithHighlight(Note):

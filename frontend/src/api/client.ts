@@ -41,6 +41,40 @@ export interface SearchResult {
   created_at: string
 }
 
+export interface FTSSearchResult {
+  id: string
+  content: string
+  summary: string | null
+  source: 'voice' | 'text'
+  duration_seconds: number | null
+  created_at: string
+  rank: number
+}
+
+export interface ShareResponse {
+  share_url: string
+  share_token: string
+  is_public: boolean
+}
+
+export interface SharedNoteResponse {
+  note: {
+    id: string
+    content: string
+    summary: string | null
+    source: 'voice' | 'text'
+    duration_seconds: number | null
+    created_at: string
+  }
+  is_owner: boolean
+  can_edit: boolean
+}
+
+export interface FTSSearchResponse {
+  results: FTSSearchResult[]
+  query: string
+}
+
 export interface NotesListResponse {
   notes: Note[]
   total: number
@@ -127,12 +161,37 @@ export const api = {
     })
   },
   
-  // Search
+  // Search (semantic - AI)
   async searchNotes(query: string, limit = 10): Promise<SearchResponse> {
     return fetchWithAuth('/notes/search', {
       method: 'POST',
       body: JSON.stringify({ query, limit }),
     })
+  },
+  
+  // Search (full-text - fast)
+  async searchNotesFTS(query: string, limit = 20): Promise<FTSSearchResponse> {
+    return fetchWithAuth('/notes/search/fts', {
+      method: 'POST',
+      body: JSON.stringify({ query, limit }),
+    })
+  },
+  
+  // Share
+  async createShareLink(noteId: string, isPublic = false): Promise<ShareResponse> {
+    return fetchWithAuth(`/notes/${noteId}/share?is_public=${isPublic}`, {
+      method: 'POST',
+    })
+  },
+  
+  async revokeShareLink(noteId: string): Promise<{ success: boolean }> {
+    return fetchWithAuth(`/notes/${noteId}/share`, {
+      method: 'DELETE',
+    })
+  },
+  
+  async getSharedNote(shareToken: string): Promise<SharedNoteResponse> {
+    return fetchWithAuth(`/shared/${shareToken}`)
   },
   
   // Stats
