@@ -406,21 +406,25 @@ async def create_subscription_invoice(
         raise HTTPException(status_code=503, detail="Bot not available")
     
     try:
+        from aiogram.types import LabeledPrice
+        import uuid
+        
         # Create invoice payload
         title = f"FixNote {plan.title()} - {period.title()}"
         description = f"Subscription to FixNote {plan.title()} plan ({period})"
         
         # Generate unique payload for this purchase
-        import uuid
         payload = f"{user.id}:{plan}:{period}:{uuid.uuid4().hex[:8]}"
         
         # Create invoice link using Telegram Stars (XTR)
+        # For Stars payments, provider_token must be empty string
         invoice_link = await _bot_instance.create_invoice_link(
             title=title,
             description=description,
             payload=payload,
+            provider_token="",  # Empty for Telegram Stars
             currency="XTR",
-            prices=[{"label": title, "amount": amount}],
+            prices=[LabeledPrice(label=title, amount=amount)],
         )
         
         return InvoiceResponse(
