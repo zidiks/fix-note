@@ -193,12 +193,9 @@ function App() {
             {/* Top fade gradient */}
             <div className="top-fade" />
 
-            {/* Header */}
+            {/* Header - fixed with frosted glass effect */}
             <header
-              className="sticky top-0 z-40 safe-area-top"
-              style={{
-                backgroundColor: 'var(--bg-primary)',
-              }}
+              className="fixed top-0 left-0 right-0 z-40 safe-area-top"
             >
               <div className="px-4 py-3 flex items-center justify-between">
                 <h1
@@ -228,8 +225,8 @@ function App() {
               </div>
             </header>
 
-            {/* Content - with bottom padding for search bar */}
-            <main className="mb-24 safe-area-bottom">
+            {/* Content - with top padding for fixed header and bottom padding for search bar */}
+            <main className="pt-[52px] mb-24 safe-area-bottom">
               <NotesList
                 searchQuery={searchQuery}
                 onSelectNote={handleSelectNote}

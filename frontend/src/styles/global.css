@@ -132,31 +132,39 @@ body {
   min-height: 100dvh;
 }
 
+/* ===== Header Background ===== */
+/* Solid background - gradient handled by top-fade overlay */
+.header-glass {
+  background-color: var(--bg-primary);
+}
+
 /* ===== Top Fade Gradient ===== */
-/* Positioned below header to fade content smoothly */
+/* Starts from top of header, fades content smoothly */
 .top-fade {
   position: fixed;
-  top: 52px; /* Approximate header height */
+  top: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 100px;
   background: linear-gradient(
     to bottom,
     var(--bg-primary) 0%,
-    rgba(242, 242, 247, 0.85) 35%,
-    rgba(242, 242, 247, 0.5) 65%,
+    var(--bg-primary) 52%, /* Solid through header area */
+    rgba(242, 242, 247, 0.7) 65%,
+    rgba(242, 242, 247, 0.3) 80%,
     rgba(242, 242, 247, 0) 100%
   );
   pointer-events: none;
-  z-index: 39;
+  z-index: 35; /* Below header content (z-40) but above list */
 }
 
 .dark .top-fade {
   background: linear-gradient(
     to bottom,
     var(--bg-primary) 0%,
-    rgba(0, 0, 0, 0.85) 35%,
-    rgba(0, 0, 0, 0.5) 65%,
+    var(--bg-primary) 52%,
+    rgba(0, 0, 0, 0.7) 65%,
+    rgba(0, 0, 0, 0.3) 80%,
     rgba(0, 0, 0, 0) 100%
   );
 }
