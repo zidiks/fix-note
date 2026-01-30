@@ -207,6 +207,13 @@ export const api = {
   async getStats(): Promise<Stats> {
     return fetchWithAuth('/stats')
   },
+  
+  // Prompt to add note (triggers bot message)
+  async promptAddNote(): Promise<{ success: boolean }> {
+    return fetchWithAuth('/prompt-add-note', {
+      method: 'POST',
+    })
+  },
 }
 
 

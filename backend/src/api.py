@@ -16,6 +16,14 @@ from .services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
+# Reference to bot (will be set from main.py)
+_bot_instance = None
+
+def set_bot_instance(bot):
+    """Set bot instance for sending messages from API."""
+    global _bot_instance
+    _bot_instance = bot
+
 # Create router instead of app
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -282,6 +290,24 @@ async def revoke_share_link(
     if not success:
         raise HTTPException(status_code=404, detail="Note not found")
     return {"success": True}
+
+
+# Trigger bot to send message when mini app closes
+@router.post("/prompt-add-note")
+async def prompt_add_note(user=Depends(get_current_user)):
+    """Send a message to user prompting them to add a note."""
+    if _bot_instance is None:
+        raise HTTPException(status_code=503, detail="Bot not available")
+    
+    try:
+        await _bot_instance.send_message(
+            chat_id=user.telegram_id,
+            text="✏️ Отправь мне голосовое или текстовое сообщение, и я сохраню его как заметку!"
+        )
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Failed to send prompt message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send message")
 
 
 # Public access to shared notes (no auth required)

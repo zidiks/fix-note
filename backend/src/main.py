@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .api import router as api_router
+from .api import router as api_router, set_bot_instance
 from .bot import start_bot, stop_bot, dp, bot
 
 # Configure logging
@@ -26,6 +26,9 @@ bot_task = None
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     global bot_task
+    
+    # Pass bot instance to API for sending messages
+    set_bot_instance(bot)
     
     # Start bot in background
     logger.info("Starting Telegram bot...")

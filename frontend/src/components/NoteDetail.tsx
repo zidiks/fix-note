@@ -209,7 +209,7 @@ export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
               style={{ backgroundColor: 'var(--bg-secondary)' }}
             >
               <p
-                className="text-base leading-relaxed whitespace-pre-wrap"
+                className="text-base leading-relaxed whitespace-pre-wrap selectable-text"
                 style={{ color: 'var(--text-primary)' }}
               >
                 {note.summary}
@@ -231,7 +231,7 @@ export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
             style={{ backgroundColor: 'var(--bg-secondary)' }}
           >
             <p
-              className="text-base leading-relaxed whitespace-pre-wrap"
+              className="text-base leading-relaxed whitespace-pre-wrap selectable-text"
               style={{ color: 'var(--text-primary)' }}
             >
               {note.content}

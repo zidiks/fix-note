@@ -156,9 +156,14 @@ function App() {
     })
   }
 
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     hapticImpact('medium')
-    // Close mini app to open bot chat for adding note
+    // Trigger bot to send prompt message, then close mini app
+    try {
+      await api.promptAddNote()
+    } catch {
+      // Ignore errors - still close the app
+    }
     close()
   }
 
