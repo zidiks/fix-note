@@ -7,7 +7,10 @@ from aiogram.types import (
     Message, 
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    WebAppInfo
+    WebAppInfo,
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent
 )
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
@@ -262,6 +265,64 @@ async def cmd_status(message: Message):
 🔍 OpenAI (embeddings): {"✅" if openai_ok else "❌"}"""
     
     await status_msg.edit_text(status_text, parse_mode=ParseMode.MARKDOWN)
+
+
+# Inline query handler for sharing notes
+@router.inline_query()
+async def handle_inline_query(inline_query: InlineQuery):
+    """Handle inline queries for sharing notes."""
+    query = inline_query.query
+    
+    # Only handle share_note_ queries
+    if not query.startswith("share_note_"):
+        return
+    
+    share_token = query.replace("share_note_", "")
+    if not share_token or len(share_token) < 16:
+        return
+    
+    # Get shared note data
+    result = await notes_service.get_note_by_share_token(share_token)
+    if not result:
+        return
+    
+    note = result["note"]
+    
+    # Prepare title and description
+    title = "📝 Заметка"
+    if note.summary:
+        # Use first line of summary as title
+        first_line = note.summary.split('\n')[0][:50]
+        title = f"📝 {first_line}"
+    
+    description = note.content[:100] + "..." if len(note.content) > 100 else note.content
+    
+    # Message text
+    message_text = f"📝 <b>{note.summary or 'Заметка'}</b>\n\n"
+    if note.source == "voice":
+        message_text += "🎤 <i>Голосовая заметка</i>\n\n"
+    message_text += f"{note.content[:300]}{'...' if len(note.content) > 300 else ''}"
+    
+    # Create inline result with button to open note
+    results = [
+        InlineQueryResultArticle(
+            id=share_token,
+            title=title,
+            description=description,
+            input_message_content=InputTextMessageContent(
+                message_text=message_text,
+                parse_mode=ParseMode.HTML
+            ),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="📖 Открыть заметку",
+                    url=f"https://t.me/fixnote_bot?startapp={share_token}"
+                )]
+            ])
+        )
+    ]
+    
+    await inline_query.answer(results, cache_time=60)
 
 
 # Content handlers

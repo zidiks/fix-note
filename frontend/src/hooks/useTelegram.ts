@@ -292,6 +292,11 @@ export const useTelegram = () => {
     tg?.setBackgroundColor(color)
   }, [tg])
 
+  // Switch to inline query mode (for sharing via inline bot)
+  const switchInlineQuery = useCallback((query: string, chatTypes?: ('users' | 'groups' | 'channels' | 'bots')[]) => {
+    tg?.switchInlineQuery(query, chatTypes)
+  }, [tg])
+
   return {
     tg,
     user,
@@ -321,5 +326,6 @@ export const useTelegram = () => {
     onBackButtonClick,
     setHeaderColor,
     setBackgroundColor,
+    switchInlineQuery,
   }
 }
