@@ -8,11 +8,11 @@ import { useTelegram } from '../hooks/useTelegram'
 
 interface NoteDetailProps {
   note: Note
-  onBack: () => void
+  onBack?: () => void
   onDelete?: (id: string) => void
 }
 
-export const NoteDetail = ({ note, onBack, onDelete }: NoteDetailProps) => {
+export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
   const { hapticImpact, hapticNotification, showConfirm, shareText, shareUrl, showPopup } = useTelegram()
   const [isSharing, setIsSharing] = useState(false)
 

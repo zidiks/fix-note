@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotes, useSearchNotes } from '../hooks/useNotes'
 import { DateGroup } from './DateGroup'
-import { NoteCard } from './NoteCard'
 import { useTelegram } from '../hooks/useTelegram'
 import { Note } from '../api/client'
 
@@ -12,7 +11,7 @@ interface NotesListProps {
 
 export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
   const { hapticImpact } = useTelegram()
-  const { groupedNotes, isLoading, total } = useNotes()
+  const { groupedNotes, isLoading } = useNotes()
   const { results: searchResults, isLoading: isSearching } = useSearchNotes(searchQuery)
 
   const isSearchMode = searchQuery.length >= 2

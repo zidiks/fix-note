@@ -7,10 +7,9 @@ import { useTelegram } from '../hooks/useTelegram'
 interface SharedNoteViewProps {
   data?: SharedNoteResponse
   isLoading: boolean
-  shareToken: string | null
 }
 
-export const SharedNoteView = ({ data, isLoading, shareToken }: SharedNoteViewProps) => {
+export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
   const { hapticImpact, hapticNotification, shareText, close } = useTelegram()
 
   // Loading state

@@ -136,7 +136,6 @@ function App() {
         <SharedNoteView 
           data={sharedData} 
           isLoading={isLoadingShared}
-          shareToken={shareToken}
         />
       </div>
     )

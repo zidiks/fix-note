@@ -5,7 +5,6 @@ import {
   isToday,
   isYesterday,
   isThisWeek,
-  isThisMonth,
   startOfMonth,
   format
 } from 'date-fns'
