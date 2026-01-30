@@ -54,6 +54,11 @@
 }
 
 /* Apply theme to body */
+html, body {
+  overscroll-behavior: none; /* Prevent iOS rubber-banding */
+  -webkit-overflow-scrolling: touch;
+}
+
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
@@ -156,6 +161,9 @@ body {
   );
   pointer-events: none;
   z-index: 35; /* Below header content (z-40) but above list */
+  /* Prevent jumping during iOS overscroll */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .dark .top-fade {
@@ -186,6 +194,9 @@ body {
   );
   pointer-events: none;
   z-index: 90;
+  /* Prevent jumping during iOS overscroll */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .dark .bottom-fade {
@@ -207,6 +218,9 @@ body {
   right: 16px;
   z-index: 100;
   display: flex;
+  /* Prevent jumping during iOS overscroll */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
   align-items: center;
   gap: 10px;
 }

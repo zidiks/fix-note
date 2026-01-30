@@ -47,16 +47,21 @@ function App() {
     ready()
     expand()
     disableVerticalSwipes()
-    // Set header and background color to match - prevents color change on scroll
-    setHeaderColor('bg_color')
-    setBackgroundColor('bg_color')
 
     // Check for share token in start_param
     if (startParam) {
       setShareToken(startParam)
       setViewState('shared')
     }
-  }, [ready, expand, disableVerticalSwipes, startParam, setHeaderColor, setBackgroundColor])
+  }, [ready, expand, disableVerticalSwipes, startParam])
+
+  // Set header and background color explicitly to prevent color change on scroll
+  useEffect(() => {
+    // Use explicit color from themeParams or default
+    const bgColor = themeParams?.bg_color || (colorScheme === 'dark' ? '#000000' : '#F2F2F7')
+    setHeaderColor(bgColor)
+    setBackgroundColor(bgColor)
+  }, [themeParams, colorScheme, setHeaderColor, setBackgroundColor])
 
   // Handle Telegram BackButton
   const handleBack = useCallback(() => {
