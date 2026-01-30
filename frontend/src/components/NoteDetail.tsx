@@ -13,7 +13,7 @@ interface NoteDetailProps {
 }
 
 export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
-  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert } = useTelegram()
+  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, openTelegramLink } = useTelegram()
   const [isSharing, setIsSharing] = useState(false)
 
   const isVoice = note.source === 'voice'
@@ -35,19 +35,17 @@ export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
       setIsSharing(false)
       hapticNotification('success')
       
-      // Copy link to clipboard and open Telegram share
-      const shareLink = data.share_url
-      const shareMessage = `📝 ${note.summary || note.content.slice(0, 100)}\n\n${shareLink}`
+      // Build Telegram share link
+      const botUsername = 'fixnote_bot'
+      const startParam = data.share_token
+      const appLink = `https://t.me/${botUsername}?startapp=${startParam}`
+      const textToShare = note.summary || 'Заметка из FixNote'
       
-      // Copy to clipboard first
-      navigator.clipboard?.writeText(shareMessage).then(() => {
-        // Then open Telegram forward dialog
-        const botUsername = 'fixnote_bot'
-        const startParam = data.share_token
-        const telegramLink = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}?startapp=${startParam}`)}&text=${encodeURIComponent(note.summary || 'Заметка из FixNote')}`
-        
-        window.open(telegramLink, '_blank')
-      })
+      // Use Telegram's native share dialog
+      const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(appLink)}&text=${encodeURIComponent(textToShare)}`
+      
+      // Use openTelegramLink for proper iOS support
+      openTelegramLink(telegramShareUrl)
     },
     onError: () => {
       setIsSharing(false)
