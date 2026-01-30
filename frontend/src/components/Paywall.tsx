@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useI18n } from '../i18n'
-import { useSubscription, PLAN_DETAILS, SubscriptionPlan } from '../stores/subscription'
+import { useSubscription, PLAN_DETAILS } from '../stores/subscription'
 import { useTelegram } from '../hooks/useTelegram'
 
 interface PaywallProps {

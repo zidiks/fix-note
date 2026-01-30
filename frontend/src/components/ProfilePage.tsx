@@ -4,12 +4,14 @@ import { useSubscription, PLAN_DETAILS } from '../stores/subscription'
 import { useTelegram } from '../hooks/useTelegram'
 
 interface ProfilePageProps {
-  onBack: () => void
+  onBack?: () => void
   onLanguageClick: () => void
   onSubscriptionClick: () => void
 }
 
-export const ProfilePage = ({ onBack, onLanguageClick, onSubscriptionClick }: ProfilePageProps) => {
+export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionClick }: ProfilePageProps) => {
+  // onBack is handled by Telegram BackButton, kept for future use
+  void _onBack
   const { t, language } = useI18n()
   const { user, hapticImpact } = useTelegram()
   const { subscription, getTrialDaysLeft } = useSubscription()

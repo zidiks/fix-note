@@ -3,7 +3,7 @@ import { useI18n, Language } from '../i18n'
 import { useTelegram } from '../hooks/useTelegram'
 
 interface LanguagePageProps {
-  onBack: () => void
+  onBack?: () => void
 }
 
 const languages: { code: Language; name: string; flag: string }[] = [
@@ -11,7 +11,9 @@ const languages: { code: Language; name: string; flag: string }[] = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
 ]
 
-export const LanguagePage = ({ onBack }: LanguagePageProps) => {
+export const LanguagePage = ({ onBack: _onBack }: LanguagePageProps) => {
+  // onBack is handled by Telegram BackButton, kept for future use
+  void _onBack
   const { t, language, setLanguage } = useI18n()
   const { hapticImpact, hapticNotification } = useTelegram()
   

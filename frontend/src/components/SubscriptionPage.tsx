@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useI18n } from '../i18n'
-import { useSubscription, SubscriptionPlan, PLAN_DETAILS, PRICING, BillingPeriod } from '../stores/subscription'
+import { useSubscription, PLAN_DETAILS, PRICING, BillingPeriod } from '../stores/subscription'
 import { useTelegram } from '../hooks/useTelegram'
 
 interface SubscriptionPageProps {
-  onBack: () => void
+  onBack?: () => void
 }
 
 interface PlanFeature {
@@ -15,7 +15,9 @@ interface PlanFeature {
   ultra: string | boolean
 }
 
-export const SubscriptionPage = ({ onBack }: SubscriptionPageProps) => {
+export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => {
+  // onBack is handled by Telegram BackButton, kept for future use
+  void _onBack
   const { t, language } = useI18n()
   const { subscription, getTrialDaysLeft, isTrialExpired } = useSubscription()
   const { hapticImpact, hapticNotification, showPopup, tg } = useTelegram()
@@ -66,11 +68,6 @@ export const SubscriptionPage = ({ onBack }: SubscriptionPageProps) => {
       ultra: language === 'ru' ? '🔜 Авто-синк' : '🔜 Auto-sync',
     },
   ]
-  
-  const handleBillingToggle = () => {
-    hapticImpact('light')
-    setBillingPeriod(prev => prev === 'monthly' ? 'yearly' : 'monthly')
-  }
   
   const handleSubscribe = async (plan: 'pro' | 'ultra') => {
     if (currentPlan === plan) return
