@@ -13,7 +13,7 @@ interface NoteDetailProps {
 }
 
 export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
-  const { hapticImpact, hapticNotification, showConfirm, shareText, shareUrl, showPopup } = useTelegram()
+  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert } = useTelegram()
   const [isSharing, setIsSharing] = useState(false)
 
   const isVoice = note.source === 'voice'
@@ -28,42 +28,38 @@ export const NoteDetail = ({ note, onDelete }: NoteDetailProps) => {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  // Share link mutation
+  // Share link mutation - always public
   const shareMutation = useMutation({
-    mutationFn: (isPublic: boolean) => api.createShareLink(note.id, isPublic),
+    mutationFn: () => api.createShareLink(note.id, true),
     onSuccess: (data) => {
       setIsSharing(false)
       hapticNotification('success')
       
-      // Use native Telegram share
-      shareUrl(data.share_url, note.summary || 'Заметка из FixNote')
+      // Copy link to clipboard and open Telegram share
+      const shareLink = data.share_url
+      const shareMessage = `📝 ${note.summary || note.content.slice(0, 100)}\n\n${shareLink}`
+      
+      // Copy to clipboard first
+      navigator.clipboard?.writeText(shareMessage).then(() => {
+        // Then open Telegram forward dialog
+        const botUsername = 'fixnote_bot'
+        const startParam = data.share_token
+        const telegramLink = `https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}?startapp=${startParam}`)}&text=${encodeURIComponent(note.summary || 'Заметка из FixNote')}`
+        
+        window.open(telegramLink, '_blank')
+      })
     },
     onError: () => {
       setIsSharing(false)
       hapticNotification('error')
+      showAlert('Не удалось создать ссылку')
     }
   })
 
   const handleShareLink = () => {
     hapticImpact('medium')
-    
-    showPopup({
-      title: 'Поделиться заметкой',
-      message: 'Выберите тип доступа для получателя:',
-      buttons: [
-        { id: 'public', type: 'default', text: '🌍 Публичная ссылка' },
-        { id: 'private', type: 'default', text: '🔒 Только для меня' },
-        { id: 'cancel', type: 'cancel', text: 'Отмена' }
-      ]
-    }, (buttonId) => {
-      if (buttonId === 'public') {
-        setIsSharing(true)
-        shareMutation.mutate(true)
-      } else if (buttonId === 'private') {
-        setIsSharing(true)
-        shareMutation.mutate(false)
-      }
-    })
+    setIsSharing(true)
+    shareMutation.mutate()
   }
 
   const handleCopyText = () => {
