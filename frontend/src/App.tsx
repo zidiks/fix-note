@@ -216,7 +216,7 @@ function App() {
 
             {/* Header - fixed */}
             <header
-              className="fixed top-0 left-0 right-0 z-40 safe-area-top header-glass"
+              className="fixed top-0 left-0 right-0 z-40 safe-area-top"
             >
               <div className="px-4 py-3 flex items-center justify-between">
                 <h1
