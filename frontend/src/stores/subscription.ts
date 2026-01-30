@@ -105,7 +105,8 @@ export const useSubscription = create<SubscriptionState>((set, get) => ({
   
   canUseFeature: (feature) => {
     const { subscription } = get()
-    if (!subscription) return false
+    // If subscription not loaded yet, assume can use (will be checked on backend)
+    if (!subscription) return true
     
     const { plan, limits, usage } = subscription
     
@@ -114,23 +115,24 @@ export const useSubscription = create<SubscriptionState>((set, get) => ({
       return false
     }
     
+    // Free plan - no AI features
+    if (plan === 'free') {
+      return false
+    }
+    
     switch (feature) {
       case 'summary':
-        if (plan === 'free') return false
         if (limits.summaries_per_month === null) return true // Unlimited
         return usage.summaries_used < limits.summaries_per_month
         
       case 'voice':
-        if (plan === 'free') return false
         if (limits.voice_minutes_per_month === null) return true
         return (usage.voice_seconds_used / 60) < limits.voice_minutes_per_month
         
       case 'chat':
-        if (plan === 'free') return false
         return limits.ai_chat_enabled
         
       case 'sync':
-        if (plan === 'free') return false
         return limits.sync_enabled
         
       default:

@@ -1,8 +1,11 @@
+import logging
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timedelta
 
 from ..db.supabase import get_supabase_client
+
+logger = logging.getLogger(__name__)
 from ..db.models import (
     User, UserCreate, Note, NoteCreate, NoteUpdate, StatsResponse, PublicNote, 
     FTSSearchResult, SubscriptionInfo, SubscriptionLimits, UsageStats
@@ -220,6 +223,50 @@ class NotesService:
         return [FTSSearchResult(**r) for r in result.data]
 
     # Subscription operations
+    async def can_use_feature(self, user_id: UUID, feature: str) -> tuple[bool, str, str]:
+        """
+        Check if user can use a specific feature.
+        Returns (can_use, plan, reason).
+        Features: 'voice', 'summary', 'chat'
+        """
+        try:
+            info = await self.get_subscription_info(user_id)
+            plan = info.plan
+            limits = info.limits
+            usage = info.usage
+            
+            # Free plan - no AI features
+            if plan == "free":
+                return False, plan, "free_plan"
+            
+            # Check specific feature limits
+            if feature == "voice":
+                if limits.voice_minutes_per_month is None:
+                    return True, plan, "ok"
+                voice_minutes_used = usage.voice_seconds_used / 60
+                if voice_minutes_used >= limits.voice_minutes_per_month:
+                    return False, plan, "limit_reached"
+                return True, plan, "ok"
+                
+            elif feature == "summary":
+                if limits.summaries_per_month is None:
+                    return True, plan, "ok"
+                if usage.summaries_used >= limits.summaries_per_month:
+                    return False, plan, "limit_reached"
+                return True, plan, "ok"
+                
+            elif feature == "chat":
+                if not limits.ai_chat_enabled:
+                    return False, plan, "not_available"
+                return True, plan, "ok"
+            
+            return True, plan, "ok"
+            
+        except Exception as e:
+            # If we can't check, allow (fail open for better UX)
+            logger.warning(f"Failed to check feature access: {e}")
+            return True, "unknown", "error"
+
     async def get_subscription_info(self, user_id: UUID) -> SubscriptionInfo:
         """Get subscription info for a user."""
         # Get user data

@@ -232,11 +232,22 @@ async def search_notes(
     user=Depends(get_current_user)
 ):
     """Semantic search over notes."""
+    # Check subscription for AI chat/search feature
+    can_use, plan, reason = await notes_service.can_use_feature(user.id, "chat")
+    if not can_use:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"AI search not available on {plan} plan. Please upgrade your subscription."
+        )
+    
     results = await rag_service.search(
         query=search.query,
         user_id=str(user.id),
         limit=search.limit
     )
+    
+    # Track usage
+    await notes_service.increment_usage(user.id, "chat_messages", 1)
     
     return SearchResponse(results=results, query=search.query)
 

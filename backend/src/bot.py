@@ -216,6 +216,28 @@ async def cmd_ask(message: Message):
         first_name=message.from_user.first_name
     )
     
+    # Check subscription for AI chat feature
+    can_use, plan, reason = await notes_service.can_use_feature(user.id, "chat")
+    if not can_use:
+        if reason == "free_plan":
+            await message.answer(
+                "🔒 **AI-чат недоступен**\n\n"
+                "На бесплатном плане AI-поиск по заметкам не поддерживается.\n\n"
+                "Оформите подписку Pro или Ultra, чтобы задавать вопросы по своим заметкам.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_notes_inline_keyboard()
+            )
+            return
+        elif reason == "not_available":
+            await message.answer(
+                "🔒 **AI-чат недоступен**\n\n"
+                f"На плане {plan.title()} AI-чат не поддерживается.\n\n"
+                "Обновите подписку для доступа к этой функции.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_notes_inline_keyboard()
+            )
+            return
+    
     # Send status message (will be edited)
     status_msg = await message.answer("🔍 Ищу в твоих заметках...")
     
@@ -245,6 +267,9 @@ async def cmd_ask(message: Message):
     
     # Generate AI response
     answer = await summarizer_service.ask(question, context)
+    
+    # Track chat usage
+    await notes_service.increment_usage(user.id, "chat_messages", 1)
     
     await status_msg.edit_text(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
 
@@ -341,6 +366,32 @@ async def handle_voice(message: Message):
         first_name=message.from_user.first_name
     )
     
+    # Check subscription for voice feature
+    can_use, plan, reason = await notes_service.can_use_feature(user.id, "voice")
+    if not can_use:
+        if reason == "free_plan":
+            await message.answer(
+                "🔒 **Голосовые заметки недоступны**\n\n"
+                "На бесплатном плане голосовые заметки не поддерживаются.\n\n"
+                "Оформите подписку Pro или Ultra, чтобы:\n"
+                "• Записывать голосовые заметки\n"
+                "• Получать AI-саммари\n"
+                "• Использовать AI-чат\n\n"
+                "Откройте приложение для оформления подписки 👇",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_notes_inline_keyboard()
+            )
+            return
+        elif reason == "limit_reached":
+            await message.answer(
+                "⚠️ **Лимит голосовых заметок исчерпан**\n\n"
+                f"Вы достигли лимита голосовых заметок на плане {plan.title()}.\n\n"
+                "Обновите подписку до Ultra для увеличения лимита или дождитесь следующего месяца.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_notes_inline_keyboard()
+            )
+            return
+    
     # Send initial status message (will be edited)
     status_msg = await message.answer("🎧 Обрабатываю голосовое сообщение...")
     
@@ -360,11 +411,23 @@ async def handle_voice(message: Message):
             await status_msg.edit_text("❌ Не удалось транскрибировать аудио. Попробуй ещё раз.")
             return
         
-        # Update status
-        await status_msg.edit_text("✨ Создаю саммари...")
+        # Track voice usage (in seconds)
+        await notes_service.increment_usage(user.id, "voice_seconds", message.voice.duration or 0)
         
-        # Generate summary
-        summary = await summarizer_service.summarize(transcription)
+        # Check subscription for summary feature
+        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+        
+        summary = None
+        if can_summarize:
+            # Update status
+            await status_msg.edit_text("✨ Создаю саммари...")
+            
+            # Generate summary
+            summary = await summarizer_service.summarize(transcription)
+            
+            # Track summary usage
+            if summary:
+                await notes_service.increment_usage(user.id, "summaries", 1)
         
         # Save note
         note = await notes_service.create_note(
@@ -390,6 +453,8 @@ async def handle_voice(message: Message):
         if summary:
             response += f"""💡 **Саммари:**
 {summary}"""
+        elif not can_summarize:
+            response += "_💡 AI-саммари недоступно на вашем плане_"
         
         await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
         
@@ -493,6 +558,14 @@ async def handle_text(message: Message):
     )
     
     if is_question and len(text) < 200:
+        # Check subscription for AI chat feature
+        can_use, _, _ = await notes_service.can_use_feature(user.id, "chat")
+        
+        if not can_use:
+            # Can't use AI - just save as note
+            await save_text_note(message, user, text)
+            return
+        
         # Treat as AI query - edit single message
         status_msg = await message.answer("🔍 Ищу ответ в заметках...")
         
@@ -513,6 +586,10 @@ async def handle_text(message: Message):
                 for r in results
             ]
             answer = await summarizer_service.ask(text, context)
+            
+            # Track chat usage
+            await notes_service.increment_usage(user.id, "chat_messages", 1)
+            
             await status_msg.edit_text(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
         else:
             # No results - save as note instead
