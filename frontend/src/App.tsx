@@ -76,7 +76,8 @@ function App() {
 
   // Manage BackButton visibility
   useEffect(() => {
-    if (viewState === 'list') {
+    if (viewState === 'list' || viewState === 'shared') {
+      // Hide back button on list view and shared view (shared uses native close)
       hideBackButton()
     } else {
       showBackButton(handleBack)

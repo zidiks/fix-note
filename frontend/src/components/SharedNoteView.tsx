@@ -10,7 +10,7 @@ interface SharedNoteViewProps {
 }
 
 export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
-  const { hapticImpact, hapticNotification, shareText, close } = useTelegram()
+  const { hapticImpact, close } = useTelegram()
 
   // Loading state
   if (isLoading) {
@@ -55,7 +55,7 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
     )
   }
 
-  const { note, is_owner, can_edit } = data
+  const { note, is_owner } = data
   const isVoice = note.source === 'voice'
   const icon = isVoice ? '🎤' : '📝'
 
@@ -66,26 +66,6 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${String(secs).padStart(2, '0')}`
-  }
-
-  const handleShare = () => {
-    hapticImpact('medium')
-    
-    let shareContent = ''
-    if (note.summary) {
-      shareContent = `📝 ${note.summary}`
-    } else {
-      shareContent = note.content
-    }
-    
-    if (isVoice && note.duration_seconds) {
-      shareContent += `\n\n🎤 Голосовая заметка (${formatDuration(note.duration_seconds)})`
-    }
-    
-    shareContent += `\n\n📅 ${formattedDate}`
-    
-    shareText(shareContent)
-    hapticNotification('success')
   }
 
   return (
@@ -104,43 +84,28 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
           WebkitBackdropFilter: 'blur(20px)',
         }}
       >
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            {is_owner && (
-              <span 
-                className="text-xs font-medium px-2 py-1 rounded-full"
-                style={{ 
-                  backgroundColor: 'rgba(52, 199, 89, 0.15)',
-                  color: '#34C759'
-                }}
-              >
-                Ваша заметка
-              </span>
-            )}
-            {!is_owner && (
-              <span 
-                className="text-xs font-medium px-2 py-1 rounded-full"
-                style={{ 
-                  backgroundColor: 'rgba(0, 122, 255, 0.15)',
-                  color: 'var(--accent)'
-                }}
-              >
-                Общая заметка
-              </span>
-            )}
-          </div>
-
-          <button
-            onClick={handleShare}
-            className="p-2 haptic-tap rounded-full"
-            style={{ color: 'var(--accent)' }}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-              <polyline points="16 6 12 2 8 6" />
-              <line x1="12" y1="2" x2="12" y2="15" />
-            </svg>
-          </button>
+        <div className="flex items-center justify-center px-4 py-3">
+          {is_owner ? (
+            <span 
+              className="text-xs font-medium px-2 py-1 rounded-full"
+              style={{ 
+                backgroundColor: 'rgba(52, 199, 89, 0.15)',
+                color: '#34C759'
+              }}
+            >
+              Ваша заметка
+            </span>
+          ) : (
+            <span 
+              className="text-xs font-medium px-2 py-1 rounded-full"
+              style={{ 
+                backgroundColor: 'rgba(0, 122, 255, 0.15)',
+                color: 'var(--accent)'
+              }}
+            >
+              Общая заметка
+            </span>
+          )}
         </div>
       </header>
 
@@ -215,16 +180,6 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
             </p>
           </div>
         </div>
-
-        {/* Actions */}
-        {can_edit && (
-          <p 
-            className="text-sm text-center mt-6"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            Вы можете редактировать эту заметку в боте
-          </p>
-        )}
       </main>
     </motion.div>
   )

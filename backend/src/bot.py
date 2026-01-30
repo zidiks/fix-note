@@ -288,20 +288,20 @@ async def handle_inline_query(inline_query: InlineQuery):
     
     note = result["note"]
     
-    # Prepare title and description
-    title = "📝 Заметка"
-    if note.summary:
-        # Use first line of summary as title
-        first_line = note.summary.split('\n')[0][:50]
-        title = f"📝 {first_line}"
+    # Get first line of content as preview
+    first_line = note.content.split('\n')[0].strip()
+    if len(first_line) > 60:
+        first_line = first_line[:60] + "..."
     
-    description = note.content[:100] + "..." if len(note.content) > 100 else note.content
+    # Prepare title for inline picker
+    title = f"📝 {first_line}"
+    description = "Нажми, чтобы отправить заметку"
     
-    # Message text
-    message_text = f"📝 <b>{note.summary or 'Заметка'}</b>\n\n"
+    # Message text - only first line preview
     if note.source == "voice":
-        message_text += "🎤 <i>Голосовая заметка</i>\n\n"
-    message_text += f"{note.content[:300]}{'...' if len(note.content) > 300 else ''}"
+        message_text = f"🎤 <b>{first_line}</b>..."
+    else:
+        message_text = f"📝 <b>{first_line}</b>..."
     
     # Create inline result with button to open note
     results = [
