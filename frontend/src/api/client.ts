@@ -14,7 +14,9 @@ const getInitData = (): string => {
 }
 
 // API base configuration
-const API_BASE = '/api'
+// In dev mode, can use VITE_API_URL to point to remote server
+// Example: VITE_API_URL=https://fixnote.space/api
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 // Types
 export interface Note {

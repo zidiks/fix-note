@@ -27,7 +27,7 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
   const date = new Date(note.created_at)
   const today = new Date()
   const isToday = date.toDateString() === today.toDateString()
-  
+
   let formattedDate: string
   if (isToday) {
     formattedDate = format(date, 'HH:mm')
@@ -90,9 +90,12 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
 
       {/* Separator */}
       {!isLast && (
-        <div 
-          className="h-px ml-4"
-          style={{ backgroundColor: 'var(--separator)' }}
+        <div
+          className="ml-4"
+          style={{
+            height: '1px',
+            backgroundColor: 'var(--separator)'
+          }}
         />
       )}
     </div>

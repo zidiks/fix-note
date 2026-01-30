@@ -276,6 +276,16 @@ export const useTelegram = () => {
     }
   }, [tg])
 
+  // Set header color
+  const setHeaderColor = useCallback((color: 'bg_color' | 'secondary_bg_color' | string) => {
+    tg?.setHeaderColor(color)
+  }, [tg])
+
+  // Set background color
+  const setBackgroundColor = useCallback((color: 'bg_color' | 'secondary_bg_color' | string) => {
+    tg?.setBackgroundColor(color)
+  }, [tg])
+
   return {
     tg,
     user,
@@ -302,5 +312,7 @@ export const useTelegram = () => {
     showBackButton,
     hideBackButton,
     onBackButtonClick,
+    setHeaderColor,
+    setBackgroundColor,
   }
 }

@@ -23,7 +23,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
       <div className="px-4 pt-4">
         <div className="mb-6">
           <div className="h-6 w-32 skeleton rounded mb-2" />
-          <div 
+          <div
             className="rounded-xl overflow-hidden"
             style={{ backgroundColor: 'var(--bg-secondary)' }}
           >
@@ -32,7 +32,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                 <div className="h-5 skeleton w-3/4 mb-1.5" />
                 <div className="h-4 skeleton w-full" />
                 {i < 3 && (
-                  <div className="h-px mt-3" style={{ backgroundColor: 'var(--separator)' }} />
+                  <div className="mt-3" style={{ height: '1px', backgroundColor: 'var(--separator)' }} />
                 )}
               </div>
             ))}
@@ -48,13 +48,13 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
       return (
         <div className="flex flex-col items-center justify-center pt-20 px-4">
           <div className="text-5xl mb-4">🔍</div>
-          <h3 
+          <h3
             className="text-lg font-semibold mb-1"
             style={{ color: 'var(--text-primary)' }}
           >
             Ничего не найдено
           </h3>
-          <p 
+          <p
             className="text-center"
             style={{ color: 'var(--text-secondary)' }}
           >
@@ -66,14 +66,14 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
 
     return (
       <div className="pt-4">
-        <h2 
+        <h2
           className="text-xl font-bold px-4 mb-2"
           style={{ color: 'var(--text-primary)' }}
         >
           Результаты ({searchResults.length})
         </h2>
 
-        <div 
+        <div
           className="mx-4 overflow-hidden rounded-xl"
           style={{ backgroundColor: 'var(--bg-secondary)' }}
         >
@@ -116,9 +116,9 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                   </p>
                 </div>
                 {index < searchResults.length - 1 && (
-                  <div 
-                    className="h-px ml-4"
-                    style={{ backgroundColor: 'var(--separator)' }}
+                  <div
+                    className="ml-4"
+                    style={{ height: '1px', backgroundColor: 'var(--separator)' }}
                   />
                 )}
               </motion.div>
@@ -134,13 +134,13 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
     return (
       <div className="flex flex-col items-center justify-center pt-20 px-4">
         <div className="text-5xl mb-4">📝</div>
-        <h3 
+        <h3
           className="text-lg font-semibold mb-1"
           style={{ color: 'var(--text-primary)' }}
         >
           Нет заметок
         </h3>
-        <p 
+        <p
           className="text-center"
           style={{ color: 'var(--text-secondary)' }}
         >

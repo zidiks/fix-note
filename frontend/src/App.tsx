@@ -12,17 +12,21 @@ import { useNotes } from './hooks/useNotes'
 type ViewState = 'list' | 'detail' | 'shared'
 
 function App() {
-  const { 
-    ready, 
-    expand, 
-    themeParams, 
-    colorScheme, 
+  const {
+    ready,
+    expand,
+    themeParams,
+    colorScheme,
     startParam,
     showBackButton,
     hideBackButton,
-    close
+    close,
+    showPopup,
+    user,
+    setHeaderColor,
+    hapticImpact
   } = useTelegram()
-  
+
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [viewState, setViewState] = useState<ViewState>('list')
@@ -40,13 +44,15 @@ function App() {
   useEffect(() => {
     ready()
     expand()
-    
+    // Set header color to match background
+    setHeaderColor('bg_color')
+
     // Check for share token in start_param
     if (startParam) {
       setShareToken(startParam)
       setViewState('shared')
     }
-  }, [ready, expand, startParam])
+  }, [ready, expand, startParam, setHeaderColor])
 
   // Handle Telegram BackButton
   const handleBack = useCallback(() => {
@@ -66,14 +72,14 @@ function App() {
     } else {
       showBackButton(handleBack)
     }
-    
+
     return () => hideBackButton()
   }, [viewState, showBackButton, hideBackButton, handleBack])
 
   // Apply theme
   useEffect(() => {
     const isDarkMode = colorScheme === 'dark'
-    
+
     if (isDarkMode) {
       document.documentElement.classList.add('dark')
     } else {
@@ -123,18 +129,43 @@ function App() {
     setViewState('list')
   }
 
+  const handleProfileClick = () => {
+    hapticImpact('light')
+    showPopup({
+      title: user?.first_name || 'Профиль',
+      message: `@${user?.username || 'user'}\n\nВсе ваши заметки синхронизируются с этим аккаунтом Telegram.`,
+      buttons: [
+        { id: 'ok', type: 'ok', text: 'OK' }
+      ]
+    })
+  }
+
+  const handleAddNote = () => {
+    hapticImpact('medium')
+    // Close mini app to open bot chat for adding note
+    close()
+  }
+
+  // Get user initials for avatar fallback
+  const getInitials = () => {
+    if (!user) return '?'
+    const first = user.first_name?.[0] || ''
+    const last = user.last_name?.[0] || ''
+    return (first + last).toUpperCase() || '?'
+  }
+
   // Render shared note view
   if (viewState === 'shared') {
     return (
-      <div 
+      <div
         className="min-h-screen"
         style={{
           backgroundColor: 'var(--bg-primary)',
           color: 'var(--text-primary)'
         }}
       >
-        <SharedNoteView 
-          data={sharedData} 
+        <SharedNoteView
+          data={sharedData}
           isLoading={isLoadingShared}
         />
       </div>
@@ -142,7 +173,7 @@ function App() {
   }
 
   return (
-    <div 
+    <div
       className="min-h-screen"
       style={{
         backgroundColor: 'var(--bg-primary)',
@@ -158,38 +189,60 @@ function App() {
             onDelete={handleDeleteNote}
           />
         ) : (
-          <div key="list">
+          <div key="list" className="notes-list-container">
+            {/* Top fade gradient */}
+            <div className="top-fade" />
+
             {/* Header */}
-            <header 
-              className="sticky top-0 z-50 safe-area-top"
+            <header
+              className="sticky top-0 z-40 safe-area-top"
               style={{
                 backgroundColor: 'var(--bg-primary)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
               }}
             >
-              <div className="px-4 py-3">
-                <h1 
-                  className="text-2xl font-bold mb-3"
+              <div className="px-4 py-3 flex items-center justify-between">
+                <h1
+                  className="text-2xl font-bold"
                   style={{ color: 'var(--text-primary)' }}
                 >
                   Заметки
                 </h1>
-                <SearchBar
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder="Поиск заметок..."
-                />
+
+                {/* Profile avatar in header */}
+                <button
+                  className="header-avatar"
+                  onClick={handleProfileClick}
+                >
+                  {user?.photo_url ? (
+                    <img
+                      src={user.photo_url}
+                      alt="Profile"
+                      className="header-avatar__image"
+                    />
+                  ) : (
+                    <span className="header-avatar__initials">
+                      {getInitials()}
+                    </span>
+                  )}
+                </button>
               </div>
             </header>
 
-            {/* Content */}
-            <main className="pb-8 safe-area-bottom">
-              <NotesList 
-                searchQuery={searchQuery} 
+            {/* Content - with bottom padding for search bar */}
+            <main className="mb-24 safe-area-bottom">
+              <NotesList
+                searchQuery={searchQuery}
                 onSelectNote={handleSelectNote}
               />
             </main>
+
+            {/* Bottom Search Bar - Liquid Glass style */}
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Поиск заметок..."
+              onAddNote={handleAddNote}
+            />
           </div>
         )}
       </AnimatePresence>
