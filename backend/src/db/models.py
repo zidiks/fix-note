@@ -1,7 +1,11 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 from uuid import UUID
+
+
+SubscriptionPlan = Literal["free", "trial", "pro", "ultra"]
+BillingPeriod = Literal["monthly", "yearly"]
 
 
 class User(BaseModel):
@@ -11,6 +15,11 @@ class User(BaseModel):
     username: Optional[str] = None
     first_name: Optional[str] = None
     language_code: str = "ru"
+    subscription_plan: SubscriptionPlan = "trial"
+    subscription_started_at: Optional[datetime] = None
+    subscription_expires_at: Optional[datetime] = None
+    trial_started_at: Optional[datetime] = None
+    trial_ends_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -106,5 +115,54 @@ class StatsResponse(BaseModel):
     text_notes: int
     notes_this_week: int
     notes_this_month: int
+
+
+class SubscriptionLimits(BaseModel):
+    """Subscription limits model."""
+    summaries_per_month: Optional[int] = None
+    voice_minutes_per_month: Optional[int] = None
+    ai_chat_enabled: bool = False
+    ai_chat_fast: bool = False
+    sync_enabled: bool = False
+    auto_sync: bool = False
+    price_monthly_stars: int = 0
+    price_yearly_stars: int = 0
+
+
+class UsageStats(BaseModel):
+    """Usage statistics model."""
+    summaries_used: int = 0
+    voice_seconds_used: int = 0
+    chat_messages_used: int = 0
+
+
+class SubscriptionInfo(BaseModel):
+    """Subscription info response model."""
+    plan: SubscriptionPlan
+    subscription_started_at: Optional[datetime] = None
+    subscription_expires_at: Optional[datetime] = None
+    trial_started_at: Optional[datetime] = None
+    trial_ends_at: Optional[datetime] = None
+    limits: SubscriptionLimits
+    usage: UsageStats
+
+
+class InvoiceRequest(BaseModel):
+    """Invoice creation request."""
+    plan: Literal["pro", "ultra"]
+    billing_period: BillingPeriod
+
+
+class InvoiceResponse(BaseModel):
+    """Invoice response model."""
+    invoice_link: str
+    plan: str
+    billing_period: str
+    amount: int
+
+
+class LanguageUpdate(BaseModel):
+    """Language update request."""
+    language: str
 
 

@@ -10,7 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .config import settings
-from .db.models import Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse, PublicNote, FTSSearchResult, ShareResponse
+from .db.models import (
+    Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse, 
+    PublicNote, FTSSearchResult, ShareResponse, SubscriptionInfo, SubscriptionLimits,
+    UsageStats, InvoiceRequest, InvoiceResponse, LanguageUpdate
+)
 from .services.notes_service import NotesService
 from .services.rag_service import RAGService
 
@@ -358,3 +362,72 @@ async def get_shared_note(
         is_owner=is_owner,
         can_edit=can_edit
     )
+
+
+# Subscription endpoints
+@router.get("/subscription", response_model=SubscriptionInfo)
+async def get_subscription(user=Depends(get_current_user)):
+    """Get user's subscription info."""
+    subscription_info = await notes_service.get_subscription_info(user.id)
+    return subscription_info
+
+
+@router.post("/subscription/invoice", response_model=InvoiceResponse)
+async def create_subscription_invoice(
+    request: InvoiceRequest,
+    user=Depends(get_current_user)
+):
+    """Create a Telegram Stars invoice for subscription."""
+    from .config import settings
+    
+    # Pricing in Telegram Stars
+    pricing = {
+        "pro": {"monthly": 350, "yearly": 3500},
+        "ultra": {"monthly": 800, "yearly": 8000},
+    }
+    
+    plan = request.plan
+    period = request.billing_period
+    amount = pricing[plan][period]
+    
+    # Create invoice link through bot
+    if _bot_instance is None:
+        raise HTTPException(status_code=503, detail="Bot not available")
+    
+    try:
+        # Create invoice payload
+        title = f"FixNote {plan.title()} - {period.title()}"
+        description = f"Subscription to FixNote {plan.title()} plan ({period})"
+        
+        # Generate unique payload for this purchase
+        import uuid
+        payload = f"{user.id}:{plan}:{period}:{uuid.uuid4().hex[:8]}"
+        
+        # Create invoice link using Telegram Stars (XTR)
+        invoice_link = await _bot_instance.create_invoice_link(
+            title=title,
+            description=description,
+            payload=payload,
+            currency="XTR",
+            prices=[{"label": title, "amount": amount}],
+        )
+        
+        return InvoiceResponse(
+            invoice_link=invoice_link,
+            plan=plan,
+            billing_period=period,
+            amount=amount
+        )
+    except Exception as e:
+        logger.error(f"Failed to create invoice: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create invoice: {str(e)}")
+
+
+@router.put("/user/language")
+async def update_user_language(
+    request: LanguageUpdate,
+    user=Depends(get_current_user)
+):
+    """Update user's language preference."""
+    await notes_service.update_user_language(user.id, request.language)
+    return {"success": True}

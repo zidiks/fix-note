@@ -8,27 +8,39 @@ import {
   startOfMonth,
   format
 } from 'date-fns'
-import { ru } from 'date-fns/locale'
+import { ru, enUS } from 'date-fns/locale'
+import { useI18n, Language } from '../i18n'
 
 interface GroupedNotes {
   label: string
   notes: Note[]
 }
 
-const groupNotesByDate = (notes: Note[]): GroupedNotes[] => {
+// Date label keys for translation
+type DateLabelKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth'
+
+const groupNotesByDate = (notes: Note[], language: Language): GroupedNotes[] => {
   const groups: Map<string, Note[]> = new Map()
+  const locale = language === 'ru' ? ru : enUS
+
+  const labels: Record<DateLabelKey, string> = {
+    today: language === 'ru' ? 'Сегодня' : 'Today',
+    yesterday: language === 'ru' ? 'Вчера' : 'Yesterday',
+    thisWeek: language === 'ru' ? 'На этой неделе' : 'This Week',
+    thisMonth: language === 'ru' ? 'В этом месяце' : 'This Month',
+  }
 
   const getGroupKey = (date: Date): string => {
     const now = new Date()
     const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
     
-    if (isToday(date)) return 'Today'
-    if (isYesterday(date)) return 'Yesterday'
-    if (diffDays <= 7 && isThisWeek(date, { weekStartsOn: 1 })) return 'Previous 7 Days'
-    if (diffDays <= 30) return 'Previous 30 Days'
+    if (isToday(date)) return labels.today
+    if (isYesterday(date)) return labels.yesterday
+    if (diffDays <= 7 && isThisWeek(date, { weekStartsOn: 1 })) return labels.thisWeek
+    if (diffDays <= 30) return labels.thisMonth
 
     // Group by month for older notes
-    return format(startOfMonth(date), 'LLLL yyyy', { locale: ru })
+    return format(startOfMonth(date), 'LLLL yyyy', { locale })
   }
 
   notes.forEach(note => {
@@ -42,7 +54,7 @@ const groupNotesByDate = (notes: Note[]): GroupedNotes[] => {
   })
 
   // Convert to array with correct order - Apple Notes style
-  const orderedKeys = ['Today', 'Yesterday', 'Previous 7 Days', 'Previous 30 Days']
+  const orderedKeys = [labels.today, labels.yesterday, labels.thisWeek, labels.thisMonth]
   const result: GroupedNotes[] = []
 
   // Add standard groups first
@@ -57,7 +69,7 @@ const groupNotesByDate = (notes: Note[]): GroupedNotes[] => {
   // Add remaining month groups (sorted by date descending)
   const remainingKeys = Array.from(groups.keys()).sort((a, b) => {
     // Parse month names and sort descending
-    return b.localeCompare(a, 'ru')
+    return b.localeCompare(a, language)
   })
 
   remainingKeys.forEach(key => {
@@ -72,6 +84,7 @@ const groupNotesByDate = (notes: Note[]): GroupedNotes[] => {
 
 export const useNotes = () => {
   const queryClient = useQueryClient()
+  const { language } = useI18n()
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['notes'],
@@ -80,8 +93,8 @@ export const useNotes = () => {
 
   const groupedNotes = useMemo(() => {
     if (!data?.notes) return []
-    return groupNotesByDate(data.notes)
-  }, [data])
+    return groupNotesByDate(data.notes, language)
+  }, [data, language])
 
   const deleteNoteMutation = useMutation({
     mutationFn: api.deleteNote,

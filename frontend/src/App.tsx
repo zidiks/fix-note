@@ -6,10 +6,16 @@ import { NotesList } from './components/NotesList'
 import { NoteDetail } from './components/NoteDetail'
 import { SharedNoteView } from './components/SharedNoteView'
 import { SearchBar } from './components/SearchBar'
+import { ProfilePage } from './components/ProfilePage'
+import { LanguagePage } from './components/LanguagePage'
+import { SubscriptionPage } from './components/SubscriptionPage'
+import { Paywall } from './components/Paywall'
 import { Note, api } from './api/client'
 import { useNotes } from './hooks/useNotes'
+import { useI18n } from './i18n'
+import { useSubscription } from './stores/subscription'
 
-type ViewState = 'list' | 'detail' | 'shared'
+type ViewState = 'list' | 'detail' | 'shared' | 'profile' | 'language' | 'subscription'
 
 function App() {
   const {
@@ -22,7 +28,6 @@ function App() {
     showBackButton,
     hideBackButton,
     close,
-    showPopup,
     user,
     setHeaderColor,
     setBackgroundColor,
@@ -33,7 +38,10 @@ function App() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [viewState, setViewState] = useState<ViewState>('list')
   const [shareToken, setShareToken] = useState<string | null>(null)
+  const [paywallFeature, setPaywallFeature] = useState<'summary' | 'voice' | 'chat' | 'sync' | null>(null)
   const { deleteNote } = useNotes()
+  const { t, setLanguage } = useI18n()
+  const { fetchSubscription } = useSubscription()
 
   // Check if opened via share link (start_param)
   const { data: sharedData, isLoading: isLoadingShared } = useQuery({
@@ -53,7 +61,16 @@ function App() {
       setShareToken(startParam)
       setViewState('shared')
     }
-  }, [ready, expand, disableVerticalSwipes, startParam])
+    
+    // Fetch subscription info
+    fetchSubscription()
+    
+    // Set language from Telegram user if first time
+    if (user?.language_code && !localStorage.getItem('fixnote-i18n')) {
+      const lang = user.language_code.startsWith('ru') ? 'ru' : 'en'
+      setLanguage(lang)
+    }
+  }, [ready, expand, disableVerticalSwipes, startParam, fetchSubscription, user, setLanguage])
 
   // Set header and background color explicitly to prevent color change on scroll
   useEffect(() => {
@@ -71,6 +88,10 @@ function App() {
     } else if (viewState === 'shared') {
       // Close the app when viewing shared note
       close()
+    } else if (viewState === 'language' || viewState === 'subscription') {
+      setViewState('profile')
+    } else if (viewState === 'profile') {
+      setViewState('list')
     }
   }, [viewState, close])
 
@@ -85,6 +106,40 @@ function App() {
 
     return () => hideBackButton()
   }, [viewState, showBackButton, hideBackButton, handleBack])
+  
+  // Navigation handlers for profile pages
+  const handleProfileClick = () => {
+    hapticImpact('light')
+    setViewState('profile')
+  }
+  
+  const handleLanguageClick = () => {
+    hapticImpact('light')
+    setViewState('language')
+  }
+  
+  const handleSubscriptionClick = () => {
+    hapticImpact('light')
+    setViewState('subscription')
+  }
+  
+  const handleBackToList = () => {
+    setSelectedNote(null)
+    setViewState('list')
+  }
+  
+  const handleBackToProfile = () => {
+    setViewState('profile')
+  }
+  
+  const closePaywall = () => {
+    setPaywallFeature(null)
+  }
+  
+  const handlePaywallUpgrade = () => {
+    setPaywallFeature(null)
+    setViewState('subscription')
+  }
 
   // Scroll to top when search query changes
   useEffect(() => {
@@ -135,26 +190,10 @@ function App() {
     setViewState('detail')
   }
 
-  const handleBackToList = () => {
-    setSelectedNote(null)
-    setViewState('list')
-  }
-
   const handleDeleteNote = (id: string) => {
     deleteNote(id)
     setSelectedNote(null)
     setViewState('list')
-  }
-
-  const handleProfileClick = () => {
-    hapticImpact('light')
-    showPopup({
-      title: user?.first_name || 'Профиль',
-      message: `@${user?.username || 'user'}\n\nВсе ваши заметки синхронизируются с этим аккаунтом Telegram.`,
-      buttons: [
-        { id: 'ok', type: 'ok', text: 'OK' }
-      ]
-    })
   }
 
   const handleAddNote = async () => {
@@ -203,7 +242,24 @@ function App() {
       }}
     >
       <AnimatePresence mode="wait">
-        {selectedNote && viewState === 'detail' ? (
+        {viewState === 'profile' ? (
+          <ProfilePage
+            key="profile"
+            onBack={handleBackToList}
+            onLanguageClick={handleLanguageClick}
+            onSubscriptionClick={handleSubscriptionClick}
+          />
+        ) : viewState === 'language' ? (
+          <LanguagePage
+            key="language"
+            onBack={handleBackToProfile}
+          />
+        ) : viewState === 'subscription' ? (
+          <SubscriptionPage
+            key="subscription"
+            onBack={handleBackToProfile}
+          />
+        ) : selectedNote && viewState === 'detail' ? (
           <NoteDetail
             key="detail"
             note={selectedNote}
@@ -224,7 +280,7 @@ function App() {
                   className="text-2xl font-bold"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  Заметки
+                  {t('notes')}
                 </h1>
 
                 {/* Profile avatar in header */}
@@ -259,12 +315,20 @@ function App() {
             <SearchBar
               value={searchQuery}
               onChange={setSearchQuery}
-              placeholder="Поиск заметок..."
+              placeholder={t('searchPlaceholder')}
               onAddNote={handleAddNote}
             />
           </div>
         )}
       </AnimatePresence>
+      
+      {/* Paywall Modal */}
+      <Paywall
+        isOpen={paywallFeature !== null}
+        onClose={closePaywall}
+        feature={paywallFeature || 'summary'}
+        onUpgrade={handlePaywallUpgrade}
+      />
     </div>
   )
 }

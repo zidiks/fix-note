@@ -3,6 +3,7 @@ import { useNotes, useSearchNotes } from '../hooks/useNotes'
 import { DateGroup } from './DateGroup'
 import { useTelegram } from '../hooks/useTelegram'
 import { Note } from '../api/client'
+import { useI18n } from '../i18n'
 
 interface NotesListProps {
   searchQuery: string
@@ -13,6 +14,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
   const { hapticImpact } = useTelegram()
   const { groupedNotes, isLoading } = useNotes()
   const { results: searchResults, isLoading: isSearching } = useSearchNotes(searchQuery)
+  const { t } = useI18n()
 
   const isSearchMode = searchQuery.length >= 2
   const showLoading = isLoading || (isSearchMode && isSearching)
@@ -52,13 +54,13 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
             className="text-lg font-semibold mb-1"
             style={{ color: 'var(--text-primary)' }}
           >
-            Ничего не найдено
+            {t('searchNoResults')}
           </h3>
           <p
             className="text-center"
             style={{ color: 'var(--text-secondary)' }}
           >
-            Попробуйте изменить поисковый запрос
+            {t('searchNoResultsDesc')}
           </p>
         </div>
       )
@@ -70,7 +72,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
           className="text-xl font-bold px-4 mb-2"
           style={{ color: 'var(--text-primary)' }}
         >
-          Результаты ({searchResults.length})
+          {t('results')} ({searchResults.length})
         </h2>
 
         <div
@@ -138,13 +140,13 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
           className="text-lg font-semibold mb-1"
           style={{ color: 'var(--text-primary)' }}
         >
-          Нет заметок
+          {t('noNotes')}
         </h3>
         <p
           className="text-center"
           style={{ color: 'var(--text-secondary)' }}
         >
-          Отправьте голосовое или текстовое сообщение боту, чтобы создать первую заметку
+          {t('noNotesDesc')}
         </p>
       </div>
     )

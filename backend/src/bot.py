@@ -10,10 +10,13 @@ from aiogram.types import (
     WebAppInfo,
     InlineQuery,
     InlineQueryResultArticle,
-    InputTextMessageContent
+    InputTextMessageContent,
+    PreCheckoutQuery,
+    LabeledPrice
 )
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
+from aiogram.methods import CreateInvoiceLink
 
 from .config import settings
 from .db.models import NoteCreate
@@ -534,6 +537,74 @@ async def save_text_note(message: Message, user, text: str):
     await rag_service.index_note(str(note.id), text)
     
     await message.answer("✅ Заметка сохранена!")
+
+
+# Payment handlers for Telegram Stars
+@router.pre_checkout_query()
+async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
+    """Handle pre-checkout query - validate the payment."""
+    # Always approve the payment (basic validation)
+    # In production, you might want to validate the payload
+    await pre_checkout_query.answer(ok=True)
+
+
+@router.message(F.successful_payment)
+async def process_successful_payment(message: Message):
+    """Handle successful payment - activate subscription."""
+    payment = message.successful_payment
+    
+    if not payment:
+        return
+    
+    # Parse payload: user_id:plan:billing_period:unique_id
+    try:
+        payload_parts = payment.invoice_payload.split(":")
+        if len(payload_parts) < 3:
+            logger.error(f"Invalid payment payload: {payment.invoice_payload}")
+            return
+        
+        user_uuid = payload_parts[0]
+        plan = payload_parts[1]
+        billing_period = payload_parts[2]
+        
+        # Activate subscription
+        success = await notes_service.activate_subscription(
+            user_id=user_uuid,
+            plan=plan,
+            billing_period=billing_period
+        )
+        
+        if success:
+            # Get plan name for message
+            plan_names = {
+                "pro": "Pro ⭐️",
+                "ultra": "Ultra 💎"
+            }
+            plan_name = plan_names.get(plan, plan.title())
+            
+            period_text = "месяц" if billing_period == "monthly" else "год"
+            
+            await message.answer(
+                f"🎉 **Подписка {plan_name} активирована!**\n\n"
+                f"Ваша подписка действует на {period_text}.\n"
+                f"Спасибо за поддержку! ❤️",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            logger.info(f"Subscription activated: user={user_uuid}, plan={plan}, period={billing_period}")
+        else:
+            await message.answer(
+                "⚠️ Платёж получен, но возникла ошибка при активации подписки. "
+                "Пожалуйста, свяжитесь с поддержкой."
+            )
+            logger.error(f"Failed to activate subscription: user={user_uuid}, plan={plan}")
+            
+    except Exception as e:
+        logger.error(f"Payment processing error: {e}")
+        await message.answer(
+            "⚠️ Произошла ошибка при обработке платежа. "
+            "Пожалуйста, свяжитесь с поддержкой."
+        )
 
 
 # Register router

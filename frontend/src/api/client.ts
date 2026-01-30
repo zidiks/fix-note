@@ -102,6 +102,44 @@ export interface Stats {
   notes_this_month: number
 }
 
+// Subscription types
+export type SubscriptionPlan = 'free' | 'trial' | 'pro' | 'ultra'
+export type BillingPeriod = 'monthly' | 'yearly'
+
+export interface SubscriptionLimits {
+  summaries_per_month: number | null
+  voice_minutes_per_month: number | null
+  ai_chat_enabled: boolean
+  ai_chat_fast: boolean
+  sync_enabled: boolean
+  auto_sync: boolean
+  price_monthly_stars: number
+  price_yearly_stars: number
+}
+
+export interface UsageStats {
+  summaries_used: number
+  voice_seconds_used: number
+  chat_messages_used: number
+}
+
+export interface SubscriptionInfo {
+  plan: SubscriptionPlan
+  subscription_started_at: string | null
+  subscription_expires_at: string | null
+  trial_started_at: string | null
+  trial_ends_at: string | null
+  limits: SubscriptionLimits
+  usage: UsageStats
+}
+
+export interface InvoiceResponse {
+  invoice_link: string
+  plan: SubscriptionPlan
+  billing_period: BillingPeriod
+  amount: number
+}
+
 // API Error class
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -212,6 +250,25 @@ export const api = {
   async promptAddNote(): Promise<{ success: boolean }> {
     return fetchWithAuth('/prompt-add-note', {
       method: 'POST',
+    })
+  },
+  
+  // Subscription
+  async getSubscription(): Promise<SubscriptionInfo> {
+    return fetchWithAuth('/subscription')
+  },
+  
+  async createInvoice(plan: 'pro' | 'ultra', billingPeriod: BillingPeriod): Promise<InvoiceResponse> {
+    return fetchWithAuth('/subscription/invoice', {
+      method: 'POST',
+      body: JSON.stringify({ plan, billing_period: billingPeriod }),
+    })
+  },
+  
+  async updateLanguage(language: string): Promise<{ success: boolean }> {
+    return fetchWithAuth('/user/language', {
+      method: 'PUT',
+      body: JSON.stringify({ language }),
     })
   },
 }

@@ -3,7 +3,10 @@ from uuid import UUID
 from datetime import datetime, timedelta
 
 from ..db.supabase import get_supabase_client
-from ..db.models import User, UserCreate, Note, NoteCreate, NoteUpdate, StatsResponse, PublicNote, FTSSearchResult
+from ..db.models import (
+    User, UserCreate, Note, NoteCreate, NoteUpdate, StatsResponse, PublicNote, 
+    FTSSearchResult, SubscriptionInfo, SubscriptionLimits, UsageStats
+)
 
 
 class NotesService:
@@ -215,5 +218,147 @@ class NotesService:
         }).execute()
         
         return [FTSSearchResult(**r) for r in result.data]
+
+    # Subscription operations
+    async def get_subscription_info(self, user_id: UUID) -> SubscriptionInfo:
+        """Get subscription info for a user."""
+        # Get user data
+        user_result = self.client.table("users").select("*").eq(
+            "id", str(user_id)
+        ).execute()
+        
+        if not user_result.data:
+            raise ValueError("User not found")
+        
+        user_data = user_result.data[0]
+        plan = user_data.get("subscription_plan", "trial")
+        
+        # Check if trial expired
+        if plan == "trial":
+            trial_ends = user_data.get("trial_ends_at")
+            if trial_ends:
+                trial_ends_dt = datetime.fromisoformat(trial_ends.replace("Z", "+00:00")).replace(tzinfo=None)
+                if datetime.utcnow() > trial_ends_dt:
+                    # Update to free plan
+                    self.client.table("users").update({
+                        "subscription_plan": "free"
+                    }).eq("id", str(user_id)).execute()
+                    plan = "free"
+        
+        # Check if paid subscription expired
+        if plan in ("pro", "ultra"):
+            expires_at = user_data.get("subscription_expires_at")
+            if expires_at:
+                expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                if datetime.utcnow() > expires_dt:
+                    # Downgrade to free
+                    self.client.table("users").update({
+                        "subscription_plan": "free"
+                    }).eq("id", str(user_id)).execute()
+                    plan = "free"
+        
+        # Get plan limits
+        limits_result = self.client.table("subscription_limits").select("*").eq(
+            "plan", plan
+        ).execute()
+        
+        if limits_result.data:
+            limits_data = limits_result.data[0]
+            limits = SubscriptionLimits(
+                summaries_per_month=limits_data.get("summaries_per_month"),
+                voice_minutes_per_month=limits_data.get("voice_minutes_per_month"),
+                ai_chat_enabled=limits_data.get("ai_chat_enabled", False),
+                ai_chat_fast=limits_data.get("ai_chat_fast", False),
+                sync_enabled=limits_data.get("sync_enabled", False),
+                auto_sync=limits_data.get("auto_sync", False),
+                price_monthly_stars=limits_data.get("price_monthly_stars", 0),
+                price_yearly_stars=limits_data.get("price_yearly_stars", 0),
+            )
+        else:
+            limits = SubscriptionLimits()
+        
+        # Get current month usage
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        usage_result = self.client.table("usage_stats").select("*").eq(
+            "user_id", str(user_id)
+        ).gte("month_start", month_start.isoformat()).execute()
+        
+        if usage_result.data:
+            usage_data = usage_result.data[0]
+            usage = UsageStats(
+                summaries_used=usage_data.get("summaries_used", 0),
+                voice_seconds_used=usage_data.get("voice_seconds_used", 0),
+                chat_messages_used=usage_data.get("chat_messages_used", 0),
+            )
+        else:
+            usage = UsageStats()
+        
+        return SubscriptionInfo(
+            plan=plan,
+            subscription_started_at=user_data.get("subscription_started_at"),
+            subscription_expires_at=user_data.get("subscription_expires_at"),
+            trial_started_at=user_data.get("trial_started_at"),
+            trial_ends_at=user_data.get("trial_ends_at"),
+            limits=limits,
+            usage=usage,
+        )
+
+    async def update_user_language(self, user_id: UUID, language: str) -> bool:
+        """Update user's language preference."""
+        result = self.client.table("users").update({
+            "language_code": language
+        }).eq("id", str(user_id)).execute()
+        
+        return len(result.data) > 0
+
+    async def activate_subscription(self, user_id: str | UUID, plan: str, billing_period: str) -> bool:
+        """Activate a subscription for user."""
+        now = datetime.utcnow()
+        
+        if billing_period == "monthly":
+            expires_at = now + timedelta(days=30)
+        else:  # yearly
+            expires_at = now + timedelta(days=365)
+        
+        result = self.client.table("users").update({
+            "subscription_plan": plan,
+            "subscription_started_at": now.isoformat(),
+            "subscription_expires_at": expires_at.isoformat(),
+        }).eq("id", str(user_id)).execute()
+        
+        return len(result.data) > 0
+
+    async def increment_usage(self, user_id: UUID, usage_type: str, amount: int = 1) -> bool:
+        """Increment usage counter for a user."""
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).date()
+        
+        # Try to upsert usage record
+        try:
+            # First try to get existing record
+            existing = self.client.table("usage_stats").select("*").eq(
+                "user_id", str(user_id)
+            ).eq("month_start", month_start.isoformat()).execute()
+            
+            if existing.data:
+                # Update existing
+                current = existing.data[0]
+                field = f"{usage_type}_used" if not usage_type.endswith("_used") else usage_type
+                new_value = current.get(field, 0) + amount
+                
+                result = self.client.table("usage_stats").update({
+                    field: new_value
+                }).eq("id", current["id"]).execute()
+            else:
+                # Create new
+                field = f"{usage_type}_used" if not usage_type.endswith("_used") else usage_type
+                result = self.client.table("usage_stats").insert({
+                    "user_id": str(user_id),
+                    "month_start": month_start.isoformat(),
+                    field: amount,
+                }).execute()
+            
+            return True
+        except Exception:
+            return False
 
 
