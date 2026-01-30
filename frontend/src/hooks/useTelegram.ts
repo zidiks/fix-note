@@ -7,6 +7,42 @@ interface TelegramUser {
   username?: string
   language_code?: string
   is_premium?: boolean
+  photo_url?: string
+}
+
+// Parse initData string into object
+function parseInitData(initData: string): {
+  user?: TelegramUser
+  query_id?: string
+  auth_date?: number
+  hash?: string
+  start_param?: string
+} {
+  if (!initData) return {}
+  
+  try {
+    const params = new URLSearchParams(initData)
+    const userStr = params.get('user')
+    const user = userStr ? JSON.parse(decodeURIComponent(userStr)) : undefined
+    
+    return {
+      user,
+      query_id: params.get('query_id') || undefined,
+      auth_date: params.get('auth_date') ? parseInt(params.get('auth_date')!) : undefined,
+      hash: params.get('hash') || undefined,
+      start_param: params.get('start_param') || undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
+// Get dev initData from env
+function getDevInitData(): string {
+  if (import.meta.env.DEV && import.meta.env.VITE_DEV_INIT_DATA) {
+    return import.meta.env.VITE_DEV_INIT_DATA
+  }
+  return ''
 }
 
 interface ThemeParams {
@@ -85,12 +121,36 @@ declare global {
 
 export const useTelegram = () => {
   const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp : undefined
+  const isDevMode = import.meta.env.DEV && !tg?.initData && !!getDevInitData()
+  
+  // Parse dev initData if in dev mode
+  const devInitDataParsed = useMemo(() => {
+    if (isDevMode) {
+      return parseInitData(getDevInitData())
+    }
+    return null
+  }, [isDevMode])
 
-  const user = useMemo(() => tg?.initDataUnsafe?.user, [tg])
-  const initData = useMemo(() => tg?.initData || '', [tg])
+  const user = useMemo(() => {
+    if (tg?.initDataUnsafe?.user) return tg.initDataUnsafe.user
+    if (devInitDataParsed?.user) return devInitDataParsed.user
+    return undefined
+  }, [tg, devInitDataParsed])
+  
+  const initData = useMemo(() => {
+    if (tg?.initData) return tg.initData
+    return getDevInitData()
+  }, [tg])
+  
   const themeParams = useMemo(() => tg?.themeParams, [tg])
   const colorScheme = useMemo(() => tg?.colorScheme || 'light', [tg])
-  const startParam = useMemo(() => tg?.initDataUnsafe?.start_param, [tg])
+  
+  const startParam = useMemo(() => {
+    if (tg?.initDataUnsafe?.start_param) return tg.initDataUnsafe.start_param
+    if (devInitDataParsed?.start_param) return devInitDataParsed.start_param
+    return undefined
+  }, [tg, devInitDataParsed])
+  
   const backButton = useMemo(() => tg?.BackButton, [tg])
 
   const ready = useCallback(() => {
@@ -224,6 +284,7 @@ export const useTelegram = () => {
     colorScheme,
     startParam,
     backButton,
+    isDevMode,
     ready,
     close,
     expand,

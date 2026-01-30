@@ -1,8 +1,15 @@
 // Get Telegram init data for authentication
 const getInitData = (): string => {
-  if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+  // Check real Telegram WebApp first
+  if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
     return window.Telegram.WebApp.initData
   }
+  
+  // Dev mode: use VITE_DEV_INIT_DATA from env
+  if (import.meta.env.DEV && import.meta.env.VITE_DEV_INIT_DATA) {
+    return import.meta.env.VITE_DEV_INIT_DATA
+  }
+  
   return ''
 }
 
