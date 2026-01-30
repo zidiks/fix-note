@@ -15,6 +15,7 @@ function App() {
   const {
     ready,
     expand,
+    disableVerticalSwipes,
     themeParams,
     colorScheme,
     startParam,
@@ -24,6 +25,7 @@ function App() {
     showPopup,
     user,
     setHeaderColor,
+    setBackgroundColor,
     hapticImpact
   } = useTelegram()
 
@@ -44,15 +46,17 @@ function App() {
   useEffect(() => {
     ready()
     expand()
-    // Set header color to match background
+    disableVerticalSwipes()
+    // Set header and background color to match - prevents color change on scroll
     setHeaderColor('bg_color')
+    setBackgroundColor('bg_color')
 
     // Check for share token in start_param
     if (startParam) {
       setShareToken(startParam)
       setViewState('shared')
     }
-  }, [ready, expand, startParam, setHeaderColor])
+  }, [ready, expand, disableVerticalSwipes, startParam, setHeaderColor, setBackgroundColor])
 
   // Handle Telegram BackButton
   const handleBack = useCallback(() => {
@@ -75,6 +79,13 @@ function App() {
 
     return () => hideBackButton()
   }, [viewState, showBackButton, hideBackButton, handleBack])
+
+  // Scroll to top when search query changes
+  useEffect(() => {
+    if (searchQuery) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [searchQuery])
 
   // Apply theme
   useEffect(() => {
@@ -193,9 +204,9 @@ function App() {
             {/* Top fade gradient */}
             <div className="top-fade" />
 
-            {/* Header - fixed with frosted glass effect */}
+            {/* Header - fixed */}
             <header
-              className="fixed top-0 left-0 right-0 z-40 safe-area-top"
+              className="fixed top-0 left-0 right-0 z-40 safe-area-top header-glass"
             >
               <div className="px-4 py-3 flex items-center justify-between">
                 <h1

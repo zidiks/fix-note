@@ -87,6 +87,8 @@ interface WebApp {
   close: () => void
   enableClosingConfirmation: () => void
   disableClosingConfirmation: () => void
+  enableVerticalSwipes: () => void
+  disableVerticalSwipes: () => void
   setHeaderColor: (color: string) => void
   setBackgroundColor: (color: string) => void
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void
@@ -163,6 +165,10 @@ export const useTelegram = () => {
 
   const expand = useCallback(() => {
     tg?.expand()
+  }, [tg])
+
+  const disableVerticalSwipes = useCallback(() => {
+    tg?.disableVerticalSwipes()
   }, [tg])
 
   const hapticImpact = useCallback((style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' = 'light') => {
@@ -298,6 +304,7 @@ export const useTelegram = () => {
     ready,
     close,
     expand,
+    disableVerticalSwipes,
     hapticImpact,
     hapticNotification,
     hapticSelection,
