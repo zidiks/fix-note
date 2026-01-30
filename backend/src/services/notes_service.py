@@ -165,14 +165,9 @@ class NotesService:
         if note.share_token and note.is_public == is_public:
             return {"share_token": note.share_token, "is_public": note.is_public}
         
-        # Generate new token
-        result = self.client.rpc("generate_share_token").execute()
-        new_token = result.data if isinstance(result.data, str) else None
-        
-        if not new_token:
-            # Fallback: generate in Python
-            import secrets
-            new_token = secrets.token_hex(16)
+        # Generate new token using Python (more reliable than RPC)
+        import secrets
+        new_token = secrets.token_hex(16)
         
         # Update note
         update_result = self.client.table("notes").update({

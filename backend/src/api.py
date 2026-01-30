@@ -266,18 +266,22 @@ async def create_share_link(
     user=Depends(get_current_user)
 ):
     """Generate a share link for a note."""
-    result = await notes_service.generate_share_token(note_id, user.id, is_public)
-    if not result:
-        raise HTTPException(status_code=404, detail="Note not found")
-    
-    # Build share URL
-    share_url = f"{settings.public_url}/note/{result['share_token']}"
-    
-    return ShareResponse(
-        share_url=share_url,
-        share_token=result['share_token'],
-        is_public=result['is_public']
-    )
+    try:
+        result = await notes_service.generate_share_token(note_id, user.id, is_public)
+        if not result:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        # Build share URL
+        share_url = f"{settings.public_url}/note/{result['share_token']}"
+        
+        return ShareResponse(
+            share_url=share_url,
+            share_token=result['share_token'],
+            is_public=result['is_public']
+        )
+    except Exception as e:
+        logger.error(f"Error creating share link for note {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create share link: {str(e)}")
 
 
 @router.delete("/notes/{note_id}/share")
