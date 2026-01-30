@@ -1,13 +1,10 @@
 import logging
-import tempfile
-import os
-from typing import Optional
+import asyncio
+from collections import defaultdict
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
     Message, 
-    ReplyKeyboardMarkup, 
-    KeyboardButton,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     WebAppInfo
@@ -35,27 +32,9 @@ transcription_service = TranscriptionService()
 summarizer_service = SummarizerService()
 rag_service = RAGService()
 
-
-def get_main_keyboard() -> ReplyKeyboardMarkup:
-    """Get main reply keyboard."""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="🎤 Голосовая заметка"),
-                KeyboardButton(text="📝 Текстовая заметка")
-            ],
-            [
-                KeyboardButton(text="🔍 Спросить AI"),
-                KeyboardButton(text="📋 Мои заметки")
-            ],
-            [
-                KeyboardButton(text="📊 Статистика"),
-                KeyboardButton(text="❓ Помощь")
-            ]
-        ],
-        resize_keyboard=True
-    )
-    return keyboard
+# Buffer for collecting forwarded messages (user_id -> list of messages)
+forwarded_messages_buffer: dict[int, list[Message]] = defaultdict(list)
+forwarded_messages_tasks: dict[int, asyncio.Task] = {}
 
 
 def get_notes_inline_keyboard() -> InlineKeyboardMarkup:
@@ -111,7 +90,6 @@ async def cmd_start(message: Message):
     
     await message.answer(
         welcome_text, 
-        reply_markup=get_main_keyboard(),
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -232,8 +210,8 @@ async def cmd_ask(message: Message):
         first_name=message.from_user.first_name
     )
     
-    # Show typing indicator
-    await message.answer("🔍 Ищу в твоих заметках...")
+    # Send status message (will be edited)
+    status_msg = await message.answer("🔍 Ищу в твоих заметках...")
     
     # Search for relevant notes
     results = await rag_service.search_with_threshold(
@@ -244,7 +222,7 @@ async def cmd_ask(message: Message):
     )
     
     if not results:
-        await message.answer(
+        await status_msg.edit_text(
             "😕 Не нашёл релевантных заметок. Попробуй переформулировать вопрос или добавь больше заметок."
         )
         return
@@ -262,7 +240,7 @@ async def cmd_ask(message: Message):
     # Generate AI response
     answer = await summarizer_service.ask(question, context)
     
-    await message.answer(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
+    await status_msg.edit_text(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("status"))
@@ -271,7 +249,7 @@ async def cmd_status(message: Message):
     if not check_user_allowed(message.from_user.id):
         return
     
-    await message.answer("🔄 Проверяю сервисы...")
+    status_msg = await message.answer("🔄 Проверяю сервисы...")
     
     whisper_ok = await transcription_service.health_check()
     deepseek_ok = await summarizer_service.health_check()
@@ -283,47 +261,7 @@ async def cmd_status(message: Message):
 🤖 DeepSeek (саммари): {"✅" if deepseek_ok else "❌"}
 🔍 OpenAI (embeddings): {"✅" if openai_ok else "❌"}"""
     
-    await message.answer(status_text, parse_mode=ParseMode.MARKDOWN)
-
-
-# Button handlers
-@router.message(F.text == "🎤 Голосовая заметка")
-async def btn_voice(message: Message):
-    """Handle voice note button."""
-    await message.answer("🎤 Отправь голосовое сообщение, и я создам заметку с транскрипцией и саммари.")
-
-
-@router.message(F.text == "📝 Текстовая заметка")
-async def btn_text(message: Message):
-    """Handle text note button."""
-    await message.answer("📝 Напиши текст заметки в следующем сообщении.")
-
-
-@router.message(F.text == "🔍 Спросить AI")
-async def btn_ask(message: Message):
-    """Handle AI question button."""
-    await message.answer(
-        "🔍 Напиши вопрос, и я поищу ответ в твоих заметках.\n\n_Пример: Что мы обсуждали на прошлой встрече?_",
-        parse_mode=ParseMode.MARKDOWN
-    )
-
-
-@router.message(F.text == "📋 Мои заметки")
-async def btn_notes(message: Message):
-    """Handle notes button."""
-    await cmd_notes(message)
-
-
-@router.message(F.text == "📊 Статистика")
-async def btn_stats(message: Message):
-    """Handle stats button."""
-    await cmd_stats(message)
-
-
-@router.message(F.text == "❓ Помощь")
-async def btn_help(message: Message):
-    """Handle help button."""
-    await cmd_help(message)
+    await status_msg.edit_text(status_text, parse_mode=ParseMode.MARKDOWN)
 
 
 # Content handlers
@@ -339,7 +277,8 @@ async def handle_voice(message: Message):
         first_name=message.from_user.first_name
     )
     
-    await message.answer("🎧 Обрабатываю голосовое сообщение...")
+    # Send initial status message (will be edited)
+    status_msg = await message.answer("🎧 Обрабатываю голосовое сообщение...")
     
     try:
         # Download voice file
@@ -354,10 +293,11 @@ async def handle_voice(message: Message):
         )
         
         if not transcription:
-            await message.answer("❌ Не удалось транскрибировать аудио. Попробуй ещё раз.")
+            await status_msg.edit_text("❌ Не удалось транскрибировать аудио. Попробуй ещё раз.")
             return
         
-        await message.answer("✨ Создаю саммари...")
+        # Update status
+        await status_msg.edit_text("✨ Создаю саммари...")
         
         # Generate summary
         summary = await summarizer_service.summarize(transcription)
@@ -376,7 +316,7 @@ async def handle_voice(message: Message):
         # Index for RAG
         await rag_service.index_note(str(note.id), transcription)
         
-        # Response
+        # Final response - edit the same message
         response = f"""✅ **Заметка сохранена!**
 
 📝 **Текст:**
@@ -387,11 +327,63 @@ async def handle_voice(message: Message):
             response += f"""💡 **Саммари:**
 {summary}"""
         
-        await message.answer(response, parse_mode=ParseMode.MARKDOWN)
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
         
     except Exception as e:
         logger.error(f"Voice processing error: {e}")
-        await message.answer("❌ Произошла ошибка при обработке. Попробуй позже.")
+        try:
+            await status_msg.edit_text("❌ Произошла ошибка при обработке. Попробуй позже.")
+        except:
+            await message.answer("❌ Произошла ошибка при обработке. Попробуй позже.")
+
+
+async def process_forwarded_messages(user_id: int, chat_id: int):
+    """Process buffered forwarded messages after delay."""
+    await asyncio.sleep(0.5)  # Wait for more messages to arrive
+    
+    messages = forwarded_messages_buffer.pop(user_id, [])
+    forwarded_messages_tasks.pop(user_id, None)
+    
+    if not messages:
+        return
+    
+    # Get user
+    first_msg = messages[0]
+    user = await notes_service.get_or_create_user(
+        telegram_id=user_id,
+        username=first_msg.from_user.username,
+        first_name=first_msg.from_user.first_name
+    )
+    
+    # Combine all message texts
+    combined_texts = []
+    for msg in messages:
+        if msg.text:
+            combined_texts.append(msg.text.strip())
+    
+    if not combined_texts:
+        return
+    
+    combined_text = "\n\n".join(combined_texts)
+    
+    # Save as single note
+    note = await notes_service.create_note(
+        user_id=user.id,
+        note_data=NoteCreate(
+            content=combined_text,
+            source="text"
+        )
+    )
+    
+    # Index for RAG
+    await rag_service.index_note(str(note.id), combined_text)
+    
+    # Send confirmation
+    msg_count = len(messages)
+    await bot.send_message(
+        chat_id,
+        f"✅ {msg_count} сообщений сохранено как 1 заметка!"
+    )
 
 
 @router.message(F.text)
@@ -402,6 +394,24 @@ async def handle_text(message: Message):
     
     # Skip commands
     if message.text.startswith("/"):
+        return
+    
+    user_id = message.from_user.id
+    
+    # Check if this is a forwarded message
+    if message.forward_date:
+        # Add to buffer
+        forwarded_messages_buffer[user_id].append(message)
+        
+        # Cancel existing task if any
+        if user_id in forwarded_messages_tasks:
+            forwarded_messages_tasks[user_id].cancel()
+        
+        # Schedule processing after delay
+        task = asyncio.create_task(
+            process_forwarded_messages(user_id, message.chat.id)
+        )
+        forwarded_messages_tasks[user_id] = task
         return
     
     user = await notes_service.get_or_create_user(
@@ -419,8 +429,8 @@ async def handle_text(message: Message):
     )
     
     if is_question and len(text) < 200:
-        # Treat as AI query
-        await message.answer("🔍 Ищу ответ в заметках...")
+        # Treat as AI query - edit single message
+        status_msg = await message.answer("🔍 Ищу ответ в заметках...")
         
         results = await rag_service.search_with_threshold(
             query=text,
@@ -439,9 +449,10 @@ async def handle_text(message: Message):
                 for r in results
             ]
             answer = await summarizer_service.ask(text, context)
-            await message.answer(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
+            await status_msg.edit_text(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
         else:
             # No results - save as note instead
+            await status_msg.delete()
             await save_text_note(message, user, text)
     else:
         # Save as note
@@ -461,7 +472,7 @@ async def save_text_note(message: Message, user, text: str):
     # Index for RAG
     await rag_service.index_note(str(note.id), text)
     
-    await message.answer("✅ Заметка сохранена!", reply_markup=get_main_keyboard())
+    await message.answer("✅ Заметка сохранена!")
 
 
 # Register router
