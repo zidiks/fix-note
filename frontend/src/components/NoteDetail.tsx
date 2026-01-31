@@ -174,6 +174,23 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     textarea.style.height = `${textarea.scrollHeight}px`
   }
 
+  // Scroll cursor into view when editing
+  const scrollCursorIntoView = (textarea: HTMLTextAreaElement) => {
+    // Get the textarea's bounding rect
+    const rect = textarea.getBoundingClientRect()
+    const viewportHeight = window.visualViewport?.height || window.innerHeight
+    
+    // Calculate available space (viewport minus action bar height ~70px)
+    const actionBarSpace = 80
+    const availableBottom = viewportHeight - actionBarSpace
+    
+    // If textarea bottom is below available space, scroll to show it
+    if (rect.bottom > availableBottom) {
+      const scrollAmount = rect.bottom - availableBottom + 20
+      window.scrollBy({ top: scrollAmount, behavior: 'smooth' })
+    }
+  }
+
   return (
     <motion.div
       className="min-h-screen"
@@ -184,7 +201,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       {/* Content */}
-      <main className="px-4 pt-4 safe-area-top" style={{ paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))' }}>
+      <main 
+        className="px-4 pt-4 safe-area-top" 
+        style={{ 
+          paddingBottom: isEditing && keyboardHeight > 0 
+            ? keyboardHeight + 80 
+            : 'calc(100px + env(safe-area-inset-bottom, 0px))' 
+        }}
+      >
         {/* Meta info */}
         <div className="flex items-center gap-3 mb-4">
           <span className="text-3xl">{icon}</span>
@@ -231,9 +255,10 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                   onChange={(e) => {
                     setEditedSummary(e.target.value)
                     autoResizeTextarea(e.target)
+                    scrollCursorIntoView(e.target)
                   }}
                   className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden"
-                  style={{ color: 'var(--text-primary)' }}
+                  style={{ color: 'var(--text-primary)', scrollMarginBottom: 100 }}
                   placeholder="Введите краткое содержание..."
                 />
               ) : (
@@ -267,9 +292,10 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                 onChange={(e) => {
                   setEditedContent(e.target.value)
                   autoResizeTextarea(e.target)
+                  scrollCursorIntoView(e.target)
                 }}
                 className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden"
-                style={{ color: 'var(--text-primary)' }}
+                style={{ color: 'var(--text-primary)', scrollMarginBottom: 100 }}
                 placeholder="Введите текст заметки..."
               />
             ) : (
