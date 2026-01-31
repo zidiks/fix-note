@@ -1,6 +1,5 @@
-import clsx from "clsx";
 import { useState, useRef, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useMutation } from '@tanstack/react-query'
@@ -295,109 +294,125 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       {/* Floating action bar */}
       <div className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center bottom-[calc(12px+env(safe-area-inset-bottom,0px))]">
-        <div
-          className={clsx(
-            'note-detail-action-bar transition-all ease-in-out',
-            isEditing ? '!w-[104px]' : '!w-[192px]'
-          )}
+        <motion.div
+          className="liquid-glass--action-bar relative h-[48px] flex items-center justify-center overflow-hidden"
+          animate={{
+            width: isEditing ? 104 : 216
+          }}
+          transition={{
+            duration: 0.3,
+            ease: [0.4, 0, 0.2, 1]
+          }}
           style={{
             bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
           }}
         >
-          {isEditing ? (
-            /* Edit mode - Save button */
-            <div className="liquid-glass liquid-glass--action-bar">
-              <div className="liquid-glass__frost" />
-              <div className="liquid-glass__gradient-border" />
-              <div className="liquid-glass__content liquid-glass__content--actions">
-                {/* Cancel button */}
-                <button
-                  onClick={handleCancelEdit}
-                  className="action-bar-button"
+          <div className="liquid-glass__frost" />
+          <div className="liquid-glass__gradient-border" />
+          <div className="liquid-glass__content liquid-glass__content--actions">
+            <AnimatePresence mode="wait" initial={false}>
+              {isEditing ? (
+                /* Edit mode - Save button */
+                <motion.div
+                  key="edit-actions"
+                  className="flex items-center justify-center gap-2"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
-
-                {/* Save button */}
-                <button
-                  onClick={handleSave}
-                  disabled={updateMutation.isPending}
-                  className="action-bar-button action-bar-button--accent"
-                >
-                  {updateMutation.isPending ? (
-                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* View mode - Action buttons */
-            <div className="liquid-glass liquid-glass--action-bar">
-              <div className="liquid-glass__frost" />
-              <div className="liquid-glass__gradient-border" />
-              <div className="liquid-glass__content liquid-glass__content--actions">
-                {/* Edit button */}
-                <button
-                  onClick={handleEdit}
-                  className="action-bar-button"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
-
-                {/* Share button */}
-                <button
-                  onClick={handleShareLink}
-                  disabled={isSharing}
-                  className="action-bar-button"
-                >
-                  {isSharing ? (
-                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="18" cy="5" r="3" />
-                      <circle cx="6" cy="12" r="3" />
-                      <circle cx="18" cy="19" r="3" />
-                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                    </svg>
-                  )}
-                </button>
-
-                {/* Copy button */}
-                <button
-                  onClick={handleCopyText}
-                  className="action-bar-button"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                  </svg>
-                </button>
-
-                {/* Delete button */}
-                {onDelete && (
+                  {/* Cancel button */}
                   <button
-                    onClick={handleDelete}
-                    className="action-bar-button action-bar-button--destructive"
+                    onClick={handleCancelEdit}
+                    className="action-bar-button"
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
                   </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+
+                  {/* Save button */}
+                  <button
+                    onClick={handleSave}
+                    disabled={updateMutation.isPending}
+                    className="action-bar-button action-bar-button--accent"
+                  >
+                    {updateMutation.isPending ? (
+                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                </motion.div>
+              ) : (
+                /* View mode - Action buttons */
+                <motion.div
+                  key="view-actions"
+                  className="flex items-center justify-center gap-2"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  {/* Edit button */}
+                  <button
+                    onClick={handleEdit}
+                    className="action-bar-button"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+
+                  {/* Share button */}
+                  <button
+                    onClick={handleShareLink}
+                    disabled={isSharing}
+                    className="action-bar-button"
+                  >
+                    {isSharing ? (
+                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="18" cy="5" r="3" />
+                        <circle cx="6" cy="12" r="3" />
+                        <circle cx="18" cy="19" r="3" />
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* Copy button */}
+                  <button
+                    onClick={handleCopyText}
+                    className="action-bar-button"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                    </svg>
+                  </button>
+
+                  {/* Delete button */}
+                  {onDelete && (
+                    <button
+                      onClick={handleDelete}
+                      className="action-bar-button action-bar-button--destructive"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                      </svg>
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
       </div>
     </motion.div>
   )
