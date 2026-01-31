@@ -16,7 +16,7 @@
   --destructive: #FF3B30;
   --success: #34C759;
   --warning: #FF9500;
-  
+
   /* Telegram WebApp support - will be overridden by JS */
   --tg-theme-bg-color: var(--bg-primary);
   --tg-theme-text-color: var(--text-primary);
@@ -292,11 +292,11 @@ input, textarea {
     rgba(255, 255, 255, 0.25) 75%,
     rgba(255, 255, 255, 0.75) 100%
   );
-  -webkit-mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
-  mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -402,20 +402,20 @@ input, textarea {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   /* Primary color border and shadow */
   border: 2px solid var(--accent);
-  box-shadow: 
+  box-shadow:
     0 0 0 1px rgba(0, 122, 255, 0.1),
     0 2px 12px rgba(0, 122, 255, 0.25),
     0 4px 20px rgba(0, 122, 255, 0.15);
 }
 
 .action-button--profile:active {
-  box-shadow: 
+  box-shadow:
     0 0 0 1px rgba(0, 122, 255, 0.15),
     0 1px 6px rgba(0, 122, 255, 0.2);
 }
 
 .dark .action-button--profile {
-  box-shadow: 
+  box-shadow:
     0 0 0 1px rgba(0, 122, 255, 0.2),
     0 2px 12px rgba(0, 122, 255, 0.3),
     0 4px 20px rgba(0, 122, 255, 0.2);
@@ -446,11 +446,11 @@ input, textarea {
     rgba(255, 255, 255, 0.25) 75%,
     rgba(255, 255, 255, 0.75) 100%
   );
-  -webkit-mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
-  mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -522,11 +522,11 @@ input, textarea {
     rgba(255, 255, 255, 0.25) 75%,
     rgba(255, 255, 255, 0.75) 100%
   );
-  -webkit-mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
-  mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -565,7 +565,7 @@ input, textarea {
   cursor: pointer;
   position: relative;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 
+  box-shadow:
     0 0 0 1px rgba(0, 122, 255, 0.1),
     0 2px 8px rgba(0, 122, 255, 0.2);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -595,7 +595,7 @@ input, textarea {
 }
 
 .dark .header-avatar {
-  box-shadow: 
+  box-shadow:
     0 0 0 1px rgba(0, 122, 255, 0.15),
     0 2px 8px rgba(0, 122, 255, 0.25);
 }
@@ -745,4 +745,75 @@ input, textarea {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ===== Note Detail Action Bar ===== */
+.note-detail-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Action bar variant of liquid glass */
+.liquid-glass--action-bar {
+  border-radius: 100px;
+  overflow: visible;
+  touch-action: none;
+  position: relative;
+  height: 48px;
+  pointer-events: auto;
+}
+
+/* Action bar content */
+.liquid-glass__content--actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 8px;
+  height: 48px;
+  box-sizing: border-box;
+}
+
+/* Action bar button */
+.action-bar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+  color: var(--text-primary);
+}
+
+.action-bar-button:active {
+  transform: scale(0.9);
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.dark .action-bar-button:active {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.action-bar-button--primary {
+  font-weight: 600;
+}
+
+.action-bar-button--accent {
+  color: var(--accent);
+}
+
+.action-bar-button--destructive {
+  color: var(--destructive);
+}
+
+.action-bar-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

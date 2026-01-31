@@ -109,7 +109,7 @@ export const useNotes = () => {
     total: data?.total || 0,
     isLoading,
     error,
-    refetch,
+    refetchNotes: refetch,
     deleteNote: deleteNoteMutation.mutate,
     isDeleting: deleteNoteMutation.isPending,
   }

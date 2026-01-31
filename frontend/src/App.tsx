@@ -39,7 +39,7 @@ function App() {
   const [viewState, setViewState] = useState<ViewState>('list')
   const [shareToken, setShareToken] = useState<string | null>(null)
   const [paywallFeature, setPaywallFeature] = useState<'summary' | 'voice' | 'chat' | 'sync' | null>(null)
-  const { deleteNote } = useNotes()
+  const { deleteNote, refetchNotes } = useNotes()
   const { t, setLanguage } = useI18n()
   const { fetchSubscription } = useSubscription()
 
@@ -196,6 +196,11 @@ function App() {
     setViewState('list')
   }
 
+  const handleUpdateNote = (updatedNote: Note) => {
+    setSelectedNote(updatedNote)
+    refetchNotes()
+  }
+
   const handleAddNote = async () => {
     hapticImpact('medium')
     // Trigger bot to send prompt message, then close mini app
@@ -265,6 +270,7 @@ function App() {
             note={selectedNote}
             onBack={handleBackToList}
             onDelete={handleDeleteNote}
+            onUpdate={handleUpdateNote}
           />
         ) : (
           <div key="list" className="notes-list-container">
