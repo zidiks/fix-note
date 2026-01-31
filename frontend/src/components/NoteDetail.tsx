@@ -285,15 +285,35 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       </main>
 
       {/* Bottom fade gradient */}
-      <div
+      <motion.div
         className="bottom-fade"
-        style={{
+        initial={{ opacity: 0 }}
+        animate={{ 
+          opacity: 1,
           bottom: keyboardHeight > 0 ? keyboardHeight : 0
+        }}
+        transition={{ 
+          delay: 0.15,
+          duration: 0.25,
+          ease: [0.25, 0.46, 0.45, 0.94]
         }}
       />
 
       {/* Floating action bar */}
-      <div className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center bottom-[calc(12px+env(safe-area-inset-bottom,0px))]">
+      <motion.div 
+        className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center bottom-[calc(12px+env(safe-area-inset-bottom,0px))]"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ 
+          opacity: 1, 
+          y: 0,
+          bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
+        }}
+        transition={{ 
+          delay: 0.15,
+          duration: 0.25,
+          ease: [0.25, 0.46, 0.45, 0.94]
+        }}
+      >
         <motion.div
           className="liquid-glass--action-bar relative h-[48px] flex items-center justify-center overflow-hidden"
           animate={{
@@ -302,9 +322,6 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           transition={{
             duration: 0.3,
             ease: [0.4, 0, 0.2, 1]
-          }}
-          style={{
-            bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
           }}
         >
           <div className="liquid-glass__frost" />
@@ -409,11 +426,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                     </button>
                   )}
                 </motion.div>
-              )}
+                )}
             </AnimatePresence>
           </div>
         </motion.div>
-      </div>
+      </motion.div>
     </motion.div>
   )
 }
