@@ -573,17 +573,26 @@ async def notion_oauth_callback_redirect(
     try:
         if state:
             from ..db.supabase import get_supabase_client
+            from datetime import datetime
             client = get_supabase_client()
             
+            logger.info(f"Storing pending OAuth for user_id: {state}, code length: {len(code)}")
+            
             # Store pending OAuth code (expires in 5 minutes)
-            client.table("pending_oauth").upsert({
+            # First try to delete existing, then insert new
+            client.table("pending_oauth").delete().eq(
+                "user_id", state
+            ).eq("provider", "notion").execute()
+            
+            result = client.table("pending_oauth").insert({
                 "user_id": state,
                 "provider": "notion",
                 "code": code,
-                "created_at": "now()",
-            }, on_conflict="user_id,provider").execute()
+            }).execute()
+            
+            logger.info(f"Pending OAuth stored successfully: {result.data}")
     except Exception as e:
-        logger.error(f"Failed to store pending OAuth code: {e}")
+        logger.error(f"Failed to store pending OAuth code: {e}", exc_info=True)
     
     html_content = f"""
     <!DOCTYPE html>

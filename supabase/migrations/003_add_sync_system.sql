@@ -238,7 +238,7 @@ $$;
 CREATE TABLE IF NOT EXISTS pending_oauth (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    provider integration_provider NOT NULL,
+    provider VARCHAR(50) NOT NULL,
     code TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
