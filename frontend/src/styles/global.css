@@ -184,11 +184,11 @@ input, textarea {
   height: 100px;
   background: linear-gradient(
     to bottom,
-    var(--bg-primary) 0%,
-    var(--bg-primary) 52%, /* Solid through header area */
-    var(--bg-primary) 65%,
-    var(--bg-primary) 80%,
-    var(--bg-primary) 100%
+    rgb(var(--bg-primary) / 1) 0%,
+    rgb(var(--bg-primary) / 1) 52%, /* solid под хедером */
+    rgb(var(--bg-primary) / 0.8) 65%,
+    rgb(var(--bg-primary) / 0.4) 80%,
+    rgb(var(--bg-primary) / 0) 100%
   );
   pointer-events: none;
   z-index: 35; /* Below header content (z-40) but above list */
@@ -200,11 +200,11 @@ input, textarea {
 .dark .top-fade {
   background: linear-gradient(
     to bottom,
-    var(--bg-primary) 0%,
-    var(--bg-primary) 52%,
-    var(--bg-primary) 65%,
-    var(--bg-primary) 80%,
-    var(--bg-primary) 100%
+    color-mix(in srgb, var(--bg-primary) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 100%, transparent) 52%,
+    color-mix(in srgb, var(--bg-primary) 80%, transparent) 65%,
+    color-mix(in srgb, var(--bg-primary) 40%, transparent) 80%,
+    color-mix(in srgb, var(--bg-primary) 0%, transparent) 100%
   );
 }
 
@@ -217,11 +217,11 @@ input, textarea {
   height: 130px;
   background: linear-gradient(
     to top,
-    var(--bg-primary) 0%,
-    var(--bg-primary) 20%,
-    var(--bg-primary) 40%,
-    var(--bg-primary) 65%,
-    var(--bg-primary) 100%
+    color-mix(in srgb, var(--bg-primary) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 98%, transparent) 20%,
+    color-mix(in srgb, var(--bg-primary) 85%, transparent) 40%,
+    color-mix(in srgb, var(--bg-primary) 50%, transparent) 65%,
+    color-mix(in srgb, var(--bg-primary) 0%, transparent) 100%
   );
   pointer-events: none;
   z-index: 90;
@@ -233,11 +233,11 @@ input, textarea {
 .dark .bottom-fade {
   background: linear-gradient(
     to top,
-    var(--bg-primary) 0%,
-    var(--bg-primary) 20%,
-    var(--bg-primary) 40%,
-    var(--bg-primary) 65%,
-    var(--bg-primary) 100%
+    color-mix(in srgb, var(--bg-primary) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 98%, transparent) 20%,
+    color-mix(in srgb, var(--bg-primary) 85%, transparent) 40%,
+    color-mix(in srgb, var(--bg-primary) 50%, transparent) 65%,
+    color-mix(in srgb, var(--bg-primary) 0%, transparent) 100%
   );
 }
 
