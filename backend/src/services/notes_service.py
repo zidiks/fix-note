@@ -82,7 +82,7 @@ class NotesService:
         """Get a single note by ID."""
         result = self.client.table("notes").select("*").eq(
             "id", str(note_id)
-        ).eq("user_id", str(user_id)).execute()
+        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
         
         if result.data:
             return Note(**result.data[0])
@@ -92,7 +92,7 @@ class NotesService:
         """Get all notes for a user."""
         result = self.client.table("notes").select("*").eq(
             "user_id", str(user_id)
-        ).order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        ).is_("deleted_at", "null").order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         
         return [Note(**note) for note in result.data]
     
@@ -112,10 +112,14 @@ class NotesService:
         return None
     
     async def delete_note(self, note_id: UUID, user_id: UUID) -> bool:
-        """Delete a note."""
-        result = self.client.table("notes").delete().eq(
+        """Soft delete a note (set deleted_at timestamp)."""
+        from datetime import datetime
+        
+        result = self.client.table("notes").update({
+            "deleted_at": datetime.utcnow().isoformat()
+        }).eq(
             "id", str(note_id)
-        ).eq("user_id", str(user_id)).execute()
+        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
         
         return len(result.data) > 0
     
@@ -133,10 +137,10 @@ class NotesService:
         week_ago = now - timedelta(days=7)
         month_ago = now - timedelta(days=30)
         
-        # Get all notes count
+        # Get all notes count (exclude deleted)
         all_notes = self.client.table("notes").select("id, source, created_at").eq(
             "user_id", str(user_id)
-        ).execute()
+        ).is_("deleted_at", "null").execute()
         
         total = len(all_notes.data)
         voice = sum(1 for n in all_notes.data if n["source"] == "voice")
@@ -189,7 +193,7 @@ class NotesService:
         """Get note by share token with ownership info."""
         result = self.client.table("notes").select("*, users!inner(telegram_id)").eq(
             "share_token", share_token
-        ).execute()
+        ).is_("deleted_at", "null").execute()
         
         if result.data:
             note_data = result.data[0]

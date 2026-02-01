@@ -627,13 +627,13 @@ class SyncService:
         # Check sync mode
         sync_mode = integration.get("sync_mode", "two_way")
         
-        # Get note
+        # Get note (exclude deleted)
         note_result = self.client.table("notes").select("*").eq(
             "id", str(note_id)
-        ).eq("user_id", str(user_id)).execute()
+        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
         
         if not note_result.data:
-            raise ValueError("Note not found")
+            raise ValueError("Note not found or deleted")
         
         note = note_result.data[0]
         
@@ -959,10 +959,10 @@ class SyncService:
             local_hash = sync_status.get("local_content_hash")
             stored_external_hash = sync_status.get("external_content_hash")
             
-            # Get current note
+            # Get current note (exclude deleted)
             note_result = self.client.table("notes").select("*").eq(
                 "id", str(note_id)
-            ).execute()
+            ).is_("deleted_at", "null").execute()
             
             if note_result.data:
                 current_note = note_result.data[0]

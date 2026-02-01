@@ -21,3 +21,6 @@ aiofiles==23.2.1
 # Utils
 python-dotenv==1.0.1
 python-dateutil==2.8.2
+
+# Background tasks
+apscheduler==3.10.4

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .api import router as api_router, set_bot_instance
 from .bot import start_bot, stop_bot, dp, bot
+from .scheduler import start_scheduler, stop_scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -34,7 +35,15 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Telegram bot...")
     bot_task = asyncio.create_task(start_bot())
     
+    # Start background scheduler for auto-sync
+    logger.info("Starting background scheduler...")
+    start_scheduler()
+    
     yield
+    
+    # Stop scheduler
+    logger.info("Stopping background scheduler...")
+    stop_scheduler()
     
     # Stop bot
     logger.info("Stopping Telegram bot...")

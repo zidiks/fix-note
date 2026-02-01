@@ -5,7 +5,7 @@ from urllib.parse import parse_qs
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, Header, Query
+from fastapi import APIRouter, HTTPException, Depends, Header, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -42,6 +42,50 @@ router = APIRouter(prefix="/api", tags=["api"])
 notes_service = NotesService()
 rag_service = RAGService()
 sync_service = SyncService()
+
+
+# Auto-sync trigger for Ultra users
+async def trigger_auto_sync_for_note(user_id: str, note_id: str):
+    """
+    Trigger auto-sync for a specific note if user has auto_sync_enabled.
+    Called as background task after note creation/update.
+    """
+    try:
+        # Check if user has auto-sync enabled
+        integration = await sync_service.get_integration(UUID(user_id), "notion")
+        
+        if not integration:
+            return
+        
+        if not integration.get("is_active"):
+            return
+            
+        if not integration.get("auto_sync_enabled"):
+            return
+            
+        if not integration.get("database_id"):
+            return
+        
+        # Sync this specific note
+        logger.info(f"Auto-sync triggered for note {note_id} (user {user_id})")
+        await sync_service.sync_note_to_notion(UUID(user_id), UUID(note_id), force=False)
+        
+    except Exception as e:
+        logger.error(f"Auto-sync failed for note {note_id}: {e}")
+
+
+# Archive note in Notion when deleted
+async def archive_note_in_notion(user_id: str, note_id: str):
+    """
+    Archive the corresponding Notion page when a note is deleted.
+    Called as background task after note deletion.
+    """
+    try:
+        result = await sync_service.delete_note_from_notion(UUID(user_id), UUID(note_id))
+        if result.get("status") == "success":
+            logger.info(f"Note {note_id} archived in Notion")
+    except Exception as e:
+        logger.error(f"Failed to archive note {note_id} in Notion: {e}")
 
 
 # Telegram WebApp auth
@@ -193,6 +237,7 @@ async def get_note(
 @router.post("/notes", response_model=Note)
 async def create_note(
     note_data: NoteCreate,
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_user)
 ):
     """Create a new note."""
@@ -201,6 +246,9 @@ async def create_note(
     # Index for RAG
     await rag_service.index_note(str(note.id), note.content)
     
+    # Trigger auto-sync for Ultra users (in background)
+    background_tasks.add_task(trigger_auto_sync_for_note, str(user.id), str(note.id))
+    
     return note
 
 
@@ -208,6 +256,7 @@ async def create_note(
 async def update_note(
     note_id: UUID,
     note_data: NoteUpdate,
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_user)
 ):
     """Update a note."""
@@ -219,18 +268,26 @@ async def update_note(
     if note_data.content:
         await rag_service.index_note(str(note.id), note.content)
     
+    # Trigger auto-sync for Ultra users (in background)
+    background_tasks.add_task(trigger_auto_sync_for_note, str(user.id), str(note.id))
+    
     return note
 
 
 @router.delete("/notes/{note_id}")
 async def delete_note(
     note_id: UUID,
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_user)
 ):
-    """Delete a note."""
+    """Delete a note (soft delete)."""
     deleted = await notes_service.delete_note(note_id, user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Note not found")
+    
+    # Archive in Notion if synced (in background)
+    background_tasks.add_task(archive_note_in_notion, str(user.id), str(note_id))
+    
     return {"success": True}
 
 
