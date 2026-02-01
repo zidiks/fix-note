@@ -197,6 +197,7 @@ class IntegrationConnectionPublic(BaseModel):
     provider: IntegrationProvider
     is_active: bool
     workspace_name: Optional[str] = None
+    database_id: Optional[str] = None
     database_name: Optional[str] = None
     sync_mode: SyncMode
     auto_sync_enabled: bool

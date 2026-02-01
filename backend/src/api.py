@@ -23,7 +23,7 @@ from .db.models import (
 )
 from .services.notes_service import NotesService
 from .services.rag_service import RAGService
-from .services.sync_service import SyncService
+from .services.sync_service import SyncService, NotionClient
 
 logger = logging.getLogger(__name__)
 
@@ -472,6 +472,9 @@ async def get_integrations(user=Depends(get_current_user)):
     integrations = await sync_service.get_user_integrations(user.id)
     
     public_integrations = []
+    notion_needs_database = False
+    notion_integration = None
+    
     for intg in integrations:
         if intg.get("is_active"):
             public_integrations.append(IntegrationConnectionPublic(
@@ -479,16 +482,44 @@ async def get_integrations(user=Depends(get_current_user)):
                 provider=intg["provider"],
                 is_active=intg["is_active"],
                 workspace_name=intg.get("workspace_name"),
+                database_id=intg.get("database_id"),
                 database_name=intg.get("database_name"),
                 sync_mode=intg.get("sync_mode", "two_way"),
                 auto_sync_enabled=intg.get("auto_sync_enabled", False),
                 last_sync_at=intg.get("last_sync_at"),
                 last_error=intg.get("last_error"),
             ))
+            # Check if Notion needs database selection
+            if intg.get("provider") == "notion" and not intg.get("database_id"):
+                notion_needs_database = True
+                notion_integration = intg
+    
+    # Build available providers with databases if needed
+    available_providers = []
+    for provider_info in AVAILABLE_INTEGRATIONS:
+        provider_data = dict(provider_info)
+        
+        # If Notion is connected but needs database, fetch available databases
+        if provider_data["provider"] == "notion" and notion_needs_database and notion_integration:
+            try:
+                notion_client = NotionClient(notion_integration["access_token"])
+                databases = await notion_client.search_databases()
+                provider_data["databases"] = [
+                    {
+                        "id": db["id"],
+                        "name": db.get("title", [{}])[0].get("plain_text", "Untitled") if db.get("title") else "Untitled"
+                    }
+                    for db in databases
+                ]
+                provider_data["needs_database_selection"] = True
+            except Exception as e:
+                logger.warning(f"Failed to fetch Notion databases: {e}")
+        
+        available_providers.append(provider_data)
     
     return IntegrationsListResponse(
         integrations=public_integrations,
-        available_providers=AVAILABLE_INTEGRATIONS,
+        available_providers=available_providers,
     )
 
 

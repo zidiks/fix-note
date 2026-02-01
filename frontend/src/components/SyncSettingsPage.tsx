@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useI18n } from '../i18n'
 import { useTelegram } from '../hooks/useTelegram'
@@ -45,12 +45,25 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       const data = await api.getIntegrations()
       setIntegrations(data.integrations)
       setAvailableProviders(data.available_providers)
+      
+      // Check if any integration needs database selection
+      const notionIntegration = data.integrations.find(i => i.provider === 'notion' && i.is_active)
+      if (notionIntegration && !notionIntegration.database_id && !showDatabasePicker) {
+        // Connected but no database selected - fetch available databases
+        setSelectedIntegration(notionIntegration)
+        // Try to get databases from available_providers
+        const notionProvider = data.available_providers.find(p => p.provider === 'notion')
+        if (notionProvider?.databases) {
+          setAvailableDatabases(notionProvider.databases)
+          setShowDatabasePicker(true)
+        }
+      }
     } catch (error) {
       console.error('Failed to load integrations:', error)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [showDatabasePicker])
   
   useEffect(() => {
     loadIntegrations()
@@ -84,9 +97,18 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
     }
   }, [hapticNotification, showAlert, t, loadIntegrations])
   
+  // Ref to prevent multiple parallel OAuth completions
+  const isProcessingOAuthRef = useRef(false)
+  
   // Check for pending OAuth when page loads or regains focus
   const checkPendingOAuth = useCallback(async () => {
+    // Prevent multiple parallel calls
+    if (isProcessingOAuthRef.current || isConnecting) {
+      return
+    }
+    
     try {
+      isProcessingOAuthRef.current = true
       const result = await api.checkPendingNotionOAuth()
       if (result.pending && result.code) {
         // Found pending OAuth code - complete the flow
@@ -96,8 +118,10 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       }
     } catch (error) {
       console.error('Failed to check pending OAuth:', error)
+    } finally {
+      isProcessingOAuthRef.current = false
     }
-  }, [handleNotionCallback])
+  }, [handleNotionCallback, isConnecting])
   
   // Handle OAuth callback from URL, localStorage, or pending in DB
   useEffect(() => {
@@ -140,15 +164,18 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       checkPendingOAuth()
     }
     
-    window.addEventListener('focus', handleFocus)
-    document.addEventListener('visibilitychange', () => {
+    const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkPendingOAuth()
       }
-    })
+    }
+    
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     
     return () => {
       window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [checkPendingOAuth])
   

@@ -150,6 +150,7 @@ export interface IntegrationConnection {
   provider: IntegrationProvider
   is_active: boolean
   workspace_name: string | null
+  database_id: string | null
   database_name: string | null
   sync_mode: SyncMode
   auto_sync_enabled: boolean
@@ -163,6 +164,8 @@ export interface AvailableProvider {
   available: boolean
   icon: string
   coming_soon?: boolean
+  databases?: NotionDatabase[]
+  needs_database_selection?: boolean
 }
 
 export interface IntegrationsListResponse {
