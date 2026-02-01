@@ -20,7 +20,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
   void _onBack // handled by Telegram BackButton
   
   const { t } = useI18n()
-  const { hapticImpact, showAlert, openLink } = useTelegram()
+  const { hapticImpact, hapticNotification, showAlert, openLink } = useTelegram()
   const { subscription } = useSubscription()
   
   // State
@@ -91,7 +91,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
   // Connect to Notion
   const handleConnectNotion = async () => {
     if (!canSync) {
-      hapticImpact('error')
+      hapticNotification('error')
       showAlert(t('upgradeForSync'))
       return
     }
@@ -119,7 +119,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       const result = await api.completeNotionOAuth(code, state)
       
       if (result.success) {
-        hapticImpact('success')
+        hapticNotification('success')
         
         if (!result.has_database && result.available_databases) {
           // Show database picker
@@ -147,7 +147,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       await api.setNotionDatabase(database.id)
       setShowDatabasePicker(false)
       await loadIntegrations()
-      hapticImpact('success')
+      hapticNotification('success')
     } catch (error) {
       console.error('Failed to set database:', error)
       showAlert(t('operationFailed'))
@@ -173,7 +173,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
   // Toggle auto-sync
   const handleAutoSyncToggle = async (integration: IntegrationConnection) => {
     if (!canAutoSync) {
-      hapticImpact('error')
+      hapticNotification('error')
       showAlert(t('upgradeForAutoSync'))
       return
     }
@@ -198,7 +198,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
     // Telegram WebApp doesn't have confirm, use showConfirm or just proceed
     try {
       await api.disconnectIntegration(integration.provider)
-      hapticImpact('success')
+      hapticNotification('success')
       await loadIntegrations()
     } catch (error) {
       console.error('Failed to disconnect:', error)
@@ -410,7 +410,7 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
                           style={{ color: 'var(--text-primary)' }}
                         >
                           {SYNC_MODES.find(m => m.value === integration.sync_mode)?.icon}{' '}
-                          {t(SYNC_MODES.find(m => m.value === integration.sync_mode)?.labelKey || 'syncModeTwoWay')}
+                          {t((SYNC_MODES.find(m => m.value === integration.sync_mode)?.labelKey || 'syncModeTwoWay') as any)}
                         </span>
                         <svg 
                           width="8" height="14" viewBox="0 0 8 14" 
@@ -636,11 +636,10 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
                     key={mode.value}
                     onClick={() => handleSyncModeChange(mode.value)}
                     className={`w-full p-4 rounded-xl flex items-center gap-3 transition-all active:scale-98 ${
-                      selectedIntegration.sync_mode === mode.value ? 'ring-2 ring-offset-2' : ''
+                      selectedIntegration.sync_mode === mode.value ? 'ring-2 ring-offset-2 ring-blue-500' : ''
                     }`}
                     style={{ 
-                      backgroundColor: 'var(--bg-tertiary)',
-                      ringColor: 'var(--accent)'
+                      backgroundColor: 'var(--bg-tertiary)'
                     }}
                   >
                     <span className="text-xl">{mode.icon}</span>
@@ -649,13 +648,13 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
                         className="font-medium block"
                         style={{ color: 'var(--text-primary)' }}
                       >
-                        {t(mode.labelKey)}
+                        {t(mode.labelKey as any)}
                       </span>
                       <span 
                         className="text-sm"
                         style={{ color: 'var(--text-secondary)' }}
                       >
-                        {t(`${mode.labelKey}Desc`)}
+                        {t(`${mode.labelKey}Desc` as any)}
                       </span>
                     </div>
                     {selectedIntegration.sync_mode === mode.value && (
