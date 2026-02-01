@@ -799,7 +799,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                                       disabled={isSyncing}
                                       className={clsx(
                                         `action-bar-button transition easy-in-out ${syncStatus?.synced ? 'action-bar-button--synced' : ''}`,
-                                        { 'pointer-none opacity-50': !(canSync || syncStatus?.has_integration) }
+                                        { 'pointer-events-none opacity-30': !(canSync && syncStatus?.has_integration) }
                                       )}
                                       title={t('syncNote')}
                                     >
