@@ -7,9 +7,10 @@ interface ProfilePageProps {
   onBack?: () => void
   onLanguageClick: () => void
   onSubscriptionClick: () => void
+  onSyncClick: () => void
 }
 
-export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionClick }: ProfilePageProps) => {
+export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionClick, onSyncClick }: ProfilePageProps) => {
   // onBack is handled by Telegram BackButton, kept for future use
   void _onBack
   const { t, language } = useI18n()
@@ -157,6 +158,42 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                 <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
+          </button>
+          
+          {/* Separator */}
+          <div 
+            className="ml-[52px]"
+            style={{ height: '0.5px', backgroundColor: 'var(--separator)' }}
+          />
+          
+          {/* Sync Settings */}
+          <button
+            className="w-full px-4 py-3.5 flex items-center justify-between active:opacity-70 transition-opacity"
+            onClick={() => handleMenuClick(onSyncClick)}
+          >
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #34C759 0%, #30D158 100%)' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                  <path d="M23 4V10H17"/>
+                  <path d="M1 20V14H7"/>
+                  <path d="M3.51 9A9 9 0 0 1 20.49 9L23 11.5"/>
+                  <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
+                </svg>
+              </div>
+              <span style={{ color: 'var(--text-primary)' }}>{t('syncSettings')}</span>
+            </div>
+            <svg 
+              width="8" 
+              height="14" 
+              viewBox="0 0 8 14" 
+              fill="none"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </button>
           
           {/* Separator */}

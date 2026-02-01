@@ -9,13 +9,14 @@ import { SearchBar } from './components/SearchBar'
 import { ProfilePage } from './components/ProfilePage'
 import { LanguagePage } from './components/LanguagePage'
 import { SubscriptionPage } from './components/SubscriptionPage'
+import { SyncSettingsPage } from './components/SyncSettingsPage'
 import { Paywall } from './components/Paywall'
 import { Note, api } from './api/client'
 import { useNotes } from './hooks/useNotes'
 import { useI18n } from './i18n'
 import { useSubscription } from './stores/subscription'
 
-type ViewState = 'list' | 'detail' | 'shared' | 'profile' | 'language' | 'subscription'
+type ViewState = 'list' | 'detail' | 'shared' | 'profile' | 'language' | 'subscription' | 'sync'
 
 function App() {
   const {
@@ -56,10 +57,25 @@ function App() {
     expand()
     disableVerticalSwipes()
 
-    // Check for share token in start_param
+    // Check for start_param
     if (startParam) {
-      setShareToken(startParam)
-      setViewState('shared')
+      // Check if it's a Notion OAuth code (format: notion_code_XXXXX)
+      if (startParam.startsWith('notion_code_')) {
+        const code = startParam.replace('notion_code_', '')
+        // Store in localStorage for SyncSettingsPage to pick up
+        try {
+          localStorage.setItem('notion_oauth_code', code)
+          localStorage.setItem('notion_oauth_state', '')
+        } catch (e) {
+          // localStorage not available
+        }
+        // Navigate to sync settings
+        setViewState('sync')
+      } else {
+        // Assume it's a share token
+        setShareToken(startParam)
+        setViewState('shared')
+      }
     }
     
     // Fetch subscription info
@@ -88,7 +104,7 @@ function App() {
     } else if (viewState === 'shared') {
       // Close the app when viewing shared note
       close()
-    } else if (viewState === 'language' || viewState === 'subscription') {
+    } else if (viewState === 'language' || viewState === 'subscription' || viewState === 'sync') {
       setViewState('profile')
     } else if (viewState === 'profile') {
       setViewState('list')
@@ -121,6 +137,11 @@ function App() {
   const handleSubscriptionClick = () => {
     hapticImpact('light')
     setViewState('subscription')
+  }
+  
+  const handleSyncClick = () => {
+    hapticImpact('light')
+    setViewState('sync')
   }
   
   const handleBackToList = () => {
@@ -253,6 +274,12 @@ function App() {
             onBack={handleBackToList}
             onLanguageClick={handleLanguageClick}
             onSubscriptionClick={handleSubscriptionClick}
+            onSyncClick={handleSyncClick}
+          />
+        ) : viewState === 'sync' ? (
+          <SyncSettingsPage
+            key="sync"
+            onBack={handleBackToProfile}
           />
         ) : viewState === 'language' ? (
           <LanguagePage

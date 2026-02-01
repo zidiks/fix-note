@@ -166,3 +166,141 @@ class LanguageUpdate(BaseModel):
     language: str
 
 
+# ==================== Sync Models ====================
+
+IntegrationProvider = Literal["notion", "obsidian", "anytype"]
+SyncMode = Literal["two_way", "app_to_external", "external_to_app"]
+SyncStatus = Literal["pending", "syncing", "synced", "error", "conflict"]
+
+
+class IntegrationConnection(BaseModel):
+    """Integration connection model."""
+    id: UUID
+    user_id: UUID
+    provider: IntegrationProvider
+    is_active: bool = True
+    workspace_id: Optional[str] = None
+    workspace_name: Optional[str] = None
+    database_id: Optional[str] = None
+    database_name: Optional[str] = None
+    sync_mode: SyncMode = "two_way"
+    auto_sync_enabled: bool = False
+    last_sync_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IntegrationConnectionPublic(BaseModel):
+    """Public integration info (no tokens)."""
+    id: UUID
+    provider: IntegrationProvider
+    is_active: bool
+    workspace_name: Optional[str] = None
+    database_name: Optional[str] = None
+    sync_mode: SyncMode
+    auto_sync_enabled: bool
+    last_sync_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
+class NoteSyncStatus(BaseModel):
+    """Note sync status model."""
+    id: UUID
+    note_id: UUID
+    integration_id: UUID
+    external_id: Optional[str] = None
+    external_url: Optional[str] = None
+    sync_status: SyncStatus = "pending"
+    local_version: int = 1
+    external_version: int = 0
+    last_synced_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
+class SyncHistoryEntry(BaseModel):
+    """Sync history entry model."""
+    id: UUID
+    user_id: UUID
+    integration_id: Optional[UUID] = None
+    note_id: Optional[UUID] = None
+    operation: str
+    direction: str
+    status: str
+    details: Optional[dict] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+
+
+# Request/Response models for sync API
+
+class NotionOAuthStartResponse(BaseModel):
+    """Response for starting Notion OAuth."""
+    authorization_url: str
+
+
+class NotionOAuthCallbackRequest(BaseModel):
+    """Request for Notion OAuth callback."""
+    code: str
+    state: str
+
+
+class NotionOAuthCallbackResponse(BaseModel):
+    """Response for Notion OAuth callback."""
+    success: bool
+    integration: Optional[IntegrationConnectionPublic] = None
+    has_database: bool = False
+    available_databases: Optional[List[dict]] = None
+
+
+class SetNotionDatabaseRequest(BaseModel):
+    """Request to set Notion database."""
+    database_id: str
+
+
+class UpdateSyncSettingsRequest(BaseModel):
+    """Request to update sync settings."""
+    sync_mode: Optional[SyncMode] = None
+    auto_sync_enabled: Optional[bool] = None
+
+
+class SyncNoteRequest(BaseModel):
+    """Request to sync a single note."""
+    force: bool = False
+
+
+class SyncNoteResponse(BaseModel):
+    """Response for note sync operation."""
+    status: str
+    operation: Optional[str] = None
+    external_id: Optional[str] = None
+    external_url: Optional[str] = None
+    reason: Optional[str] = None
+    error: Optional[str] = None
+
+
+class SyncAllResponse(BaseModel):
+    """Response for syncing all notes."""
+    synced: int
+    failed: int
+    skipped: int
+    errors: List[dict] = []
+
+
+class ResolveConflictRequest(BaseModel):
+    """Request to resolve a sync conflict."""
+    resolution: Literal["keep_local", "keep_external", "keep_both"]
+
+
+class IntegrationsListResponse(BaseModel):
+    """Response with list of integrations."""
+    integrations: List[IntegrationConnectionPublic]
+    available_providers: List[dict]
+
+
+class SyncHistoryResponse(BaseModel):
+    """Response with sync history."""
+    history: List[SyncHistoryEntry]
+    total: int
+
+

@@ -140,6 +140,96 @@ export interface InvoiceResponse {
   amount: number
 }
 
+// Sync types
+export type IntegrationProvider = 'notion' | 'obsidian' | 'anytype'
+export type SyncMode = 'two_way' | 'app_to_external' | 'external_to_app'
+export type SyncStatusType = 'pending' | 'syncing' | 'synced' | 'error' | 'conflict'
+
+export interface IntegrationConnection {
+  id: string
+  provider: IntegrationProvider
+  is_active: boolean
+  workspace_name: string | null
+  database_name: string | null
+  sync_mode: SyncMode
+  auto_sync_enabled: boolean
+  last_sync_at: string | null
+  last_error: string | null
+}
+
+export interface AvailableProvider {
+  provider: IntegrationProvider
+  name: string
+  available: boolean
+  icon: string
+  coming_soon?: boolean
+}
+
+export interface IntegrationsListResponse {
+  integrations: IntegrationConnection[]
+  available_providers: AvailableProvider[]
+}
+
+export interface NotionOAuthStartResponse {
+  authorization_url: string
+}
+
+export interface NotionDatabase {
+  id: string
+  name: string
+  url?: string
+}
+
+export interface NotionOAuthCallbackResponse {
+  success: boolean
+  integration: IntegrationConnection | null
+  has_database: boolean
+  available_databases: NotionDatabase[] | null
+}
+
+export interface SyncNoteResponse {
+  status: string
+  operation?: string
+  external_id?: string
+  external_url?: string
+  reason?: string
+  error?: string
+}
+
+export interface SyncAllResponse {
+  synced: number
+  failed: number
+  skipped: number
+  errors: Array<{ note_id: string; error: string }>
+}
+
+export interface NoteSyncStatusResponse {
+  synced: boolean
+  has_integration: boolean
+  sync_status: SyncStatusType | null
+  external_url: string | null
+  last_synced_at: string | null
+  has_conflict: boolean
+}
+
+export interface SyncHistoryEntry {
+  id: string
+  user_id: string
+  integration_id: string | null
+  note_id: string | null
+  operation: string
+  direction: string
+  status: string
+  details: Record<string, unknown> | null
+  error_message: string | null
+  created_at: string
+}
+
+export interface SyncHistoryResponse {
+  history: SyncHistoryEntry[]
+  total: number
+}
+
 // API Error class
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -270,6 +360,82 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ language }),
     })
+  },
+  
+  // Sync
+  async getIntegrations(): Promise<IntegrationsListResponse> {
+    return fetchWithAuth('/sync/integrations')
+  },
+  
+  async startNotionOAuth(): Promise<NotionOAuthStartResponse> {
+    return fetchWithAuth('/sync/notion/auth')
+  },
+  
+  async completeNotionOAuth(code: string, state: string): Promise<NotionOAuthCallbackResponse> {
+    return fetchWithAuth('/sync/notion/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    })
+  },
+  
+  async setNotionDatabase(databaseId: string): Promise<{ success: boolean }> {
+    return fetchWithAuth('/sync/notion/database', {
+      method: 'POST',
+      body: JSON.stringify({ database_id: databaseId }),
+    })
+  },
+  
+  async updateSyncSettings(
+    provider: IntegrationProvider,
+    settings: { sync_mode?: SyncMode; auto_sync_enabled?: boolean }
+  ): Promise<{ success: boolean }> {
+    return fetchWithAuth(`/sync/${provider}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    })
+  },
+  
+  async disconnectIntegration(provider: IntegrationProvider): Promise<{ success: boolean }> {
+    return fetchWithAuth(`/sync/${provider}`, {
+      method: 'DELETE',
+    })
+  },
+  
+  async syncNote(noteId: string, force = false): Promise<SyncNoteResponse> {
+    return fetchWithAuth(`/sync/notes/${noteId}`, {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    })
+  },
+  
+  async pullNoteFromExternal(noteId: string): Promise<SyncNoteResponse> {
+    return fetchWithAuth(`/sync/notes/${noteId}/pull`, {
+      method: 'POST',
+    })
+  },
+  
+  async syncAllNotes(): Promise<SyncAllResponse> {
+    return fetchWithAuth('/sync/all', {
+      method: 'POST',
+    })
+  },
+  
+  async resolveConflict(
+    noteId: string,
+    resolution: 'keep_local' | 'keep_external' | 'keep_both'
+  ): Promise<{ status: string }> {
+    return fetchWithAuth(`/sync/notes/${noteId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ resolution }),
+    })
+  },
+  
+  async getNoteSyncStatus(noteId: string): Promise<NoteSyncStatusResponse> {
+    return fetchWithAuth(`/sync/notes/${noteId}/status`)
+  },
+  
+  async getSyncHistory(limit = 50): Promise<SyncHistoryResponse> {
+    return fetchWithAuth(`/sync/history?limit=${limit}`)
   },
 }
 

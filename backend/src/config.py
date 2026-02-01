@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     api_port: int = 8000
     public_url: str = ""  # For Mini App WebApp URL
     
+    # Notion OAuth (optional - for sync feature)
+    notion_client_id: str = ""
+    notion_client_secret: str = ""
+    notion_redirect_uri: str = ""  # e.g., https://your-app.com/api/sync/notion/callback
+    
     @property
     def allowed_user_ids_list(self) -> List[int]:
         """Parse allowed_user_ids as a list of integers."""

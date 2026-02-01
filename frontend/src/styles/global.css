@@ -813,6 +813,10 @@ input, textarea {
   color: var(--destructive);
 }
 
+.action-bar-button--synced {
+  color: var(--success);
+}
+
 .action-bar-button:disabled {
   opacity: 0.5;
   cursor: default;

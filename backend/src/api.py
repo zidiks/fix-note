@@ -13,10 +13,17 @@ from .config import settings
 from .db.models import (
     Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse, 
     PublicNote, FTSSearchResult, ShareResponse, SubscriptionInfo, SubscriptionLimits,
-    UsageStats, InvoiceRequest, InvoiceResponse, LanguageUpdate
+    UsageStats, InvoiceRequest, InvoiceResponse, LanguageUpdate,
+    # Sync models
+    IntegrationConnectionPublic, NoteSyncStatus, SyncHistoryEntry,
+    NotionOAuthStartResponse, NotionOAuthCallbackRequest, NotionOAuthCallbackResponse,
+    SetNotionDatabaseRequest, UpdateSyncSettingsRequest, SyncNoteRequest,
+    SyncNoteResponse, SyncAllResponse, ResolveConflictRequest,
+    IntegrationsListResponse, SyncHistoryResponse, IntegrationProvider, SyncMode
 )
 from .services.notes_service import NotesService
 from .services.rag_service import RAGService
+from .services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,7 @@ router = APIRouter(prefix="/api", tags=["api"])
 # Services
 notes_service = NotesService()
 rag_service = RAGService()
+sync_service = SyncService()
 
 
 # Telegram WebApp auth
@@ -446,3 +454,448 @@ async def update_user_language(
     """Update user's language preference."""
     await notes_service.update_user_language(user.id, request.language)
     return {"success": True}
+
+
+# ==================== Sync Endpoints ====================
+
+# Available integrations for display
+AVAILABLE_INTEGRATIONS = [
+    {"provider": "notion", "name": "Notion", "available": True, "icon": "📝"},
+    {"provider": "obsidian", "name": "Obsidian", "available": False, "icon": "🔮", "coming_soon": True},
+    {"provider": "anytype", "name": "Anytype", "available": False, "icon": "🧊", "coming_soon": True},
+]
+
+
+@router.get("/sync/integrations", response_model=IntegrationsListResponse)
+async def get_integrations(user=Depends(get_current_user)):
+    """Get all integration connections for user."""
+    integrations = await sync_service.get_user_integrations(user.id)
+    
+    public_integrations = []
+    for intg in integrations:
+        if intg.get("is_active"):
+            public_integrations.append(IntegrationConnectionPublic(
+                id=intg["id"],
+                provider=intg["provider"],
+                is_active=intg["is_active"],
+                workspace_name=intg.get("workspace_name"),
+                database_name=intg.get("database_name"),
+                sync_mode=intg.get("sync_mode", "two_way"),
+                auto_sync_enabled=intg.get("auto_sync_enabled", False),
+                last_sync_at=intg.get("last_sync_at"),
+                last_error=intg.get("last_error"),
+            ))
+    
+    return IntegrationsListResponse(
+        integrations=public_integrations,
+        available_providers=AVAILABLE_INTEGRATIONS,
+    )
+
+
+@router.get("/sync/notion/auth", response_model=NotionOAuthStartResponse)
+async def start_notion_oauth(user=Depends(get_current_user)):
+    """Start Notion OAuth flow."""
+    # Check if user has sync permission
+    subscription = await notes_service.get_subscription_info(user.id)
+    if not subscription.limits.sync_enabled:
+        raise HTTPException(
+            status_code=403, 
+            detail="Sync feature requires Pro or Ultra subscription"
+        )
+    
+    if not settings.notion_client_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Notion integration not configured"
+        )
+    
+    redirect_uri = settings.notion_redirect_uri or f"{settings.public_url}/api/sync/notion/callback"
+    auth_url = sync_service.get_notion_oauth_url(user.id, redirect_uri)
+    
+    return NotionOAuthStartResponse(authorization_url=auth_url)
+
+
+@router.get("/sync/notion/callback")
+async def notion_oauth_callback_redirect(
+    code: str = Query(...),
+    state: str = Query(default=""),
+    error: Optional[str] = Query(default=None),
+):
+    """
+    Handle Notion OAuth redirect (GET).
+    Returns HTML page that passes code back to Telegram Mini App.
+    """
+    from fastapi.responses import HTMLResponse
+    
+    if error:
+        # OAuth was denied or failed
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>FixNote - Error</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                    color: white;
+                    text-align: center;
+                    padding: 20px;
+                }}
+                .container {{
+                    max-width: 400px;
+                }}
+                .icon {{ font-size: 64px; margin-bottom: 20px; }}
+                h1 {{ font-size: 24px; margin-bottom: 10px; }}
+                p {{ color: #8e8e93; font-size: 16px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="icon">❌</div>
+                <h1>Подключение отменено</h1>
+                <p>Вернитесь в Telegram и попробуйте снова</p>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
+    
+    # Success - show page with code to copy or auto-redirect
+    # The state contains user_id, we'll pass code back to Mini App
+    telegram_bot_username = "fixnote_bot"  # Your bot username
+    mini_app_url = f"https://t.me/{telegram_bot_username}/app?startapp=notion_code_{code}"
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>FixNote - Notion Connected</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                color: white;
+                text-align: center;
+                padding: 20px;
+            }}
+            .container {{
+                max-width: 400px;
+            }}
+            .icon {{ font-size: 64px; margin-bottom: 20px; }}
+            h1 {{ font-size: 24px; margin-bottom: 10px; }}
+            p {{ color: #8e8e93; font-size: 16px; margin-bottom: 24px; }}
+            .btn {{
+                display: inline-block;
+                background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+                color: white;
+                text-decoration: none;
+                padding: 14px 32px;
+                border-radius: 12px;
+                font-size: 17px;
+                font-weight: 600;
+                transition: transform 0.2s, opacity 0.2s;
+            }}
+            .btn:active {{
+                transform: scale(0.95);
+                opacity: 0.9;
+            }}
+            .code {{
+                background: rgba(255,255,255,0.1);
+                padding: 12px 16px;
+                border-radius: 8px;
+                font-family: monospace;
+                font-size: 12px;
+                word-break: break-all;
+                margin: 16px 0;
+                color: #8e8e93;
+            }}
+            .hint {{
+                font-size: 14px;
+                color: #636366;
+                margin-top: 20px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="icon">✅</div>
+            <h1>Notion подключён!</h1>
+            <p>Авторизация прошла успешно.<br>Вернитесь в Telegram для завершения настройки.</p>
+            
+            <a href="https://t.me/fixnote_bot" class="btn">
+                Открыть FixNote в Telegram
+            </a>
+            
+            <div class="hint">
+                Если кнопка не работает, откройте @fixnote_bot в Telegram вручную
+            </div>
+            
+            <input type="hidden" id="oauth-code" value="{code}" />
+            <input type="hidden" id="oauth-state" value="{state}" />
+        </div>
+        
+        <script>
+            // Try to store the code in localStorage for when user returns to Mini App
+            try {{
+                localStorage.setItem('notion_oauth_code', '{code}');
+                localStorage.setItem('notion_oauth_state', '{state}');
+            }} catch(e) {{}}
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
+@router.post("/sync/notion/callback", response_model=NotionOAuthCallbackResponse)
+async def notion_oauth_callback(
+    request: NotionOAuthCallbackRequest,
+    user=Depends(get_current_user)
+):
+    """Handle Notion OAuth callback (POST from frontend)."""
+    try:
+        redirect_uri = settings.notion_redirect_uri or f"{settings.public_url}/api/sync/notion/callback"
+        result = await sync_service.complete_notion_oauth(
+            user.id,
+            request.code,
+            redirect_uri,
+        )
+        
+        integration = result["integration"]
+        public_integration = IntegrationConnectionPublic(
+            id=integration["id"],
+            provider=integration["provider"],
+            is_active=integration["is_active"],
+            workspace_name=integration.get("workspace_name"),
+            database_name=integration.get("database_name"),
+            sync_mode=integration.get("sync_mode", "two_way"),
+            auto_sync_enabled=integration.get("auto_sync_enabled", False),
+            last_sync_at=integration.get("last_sync_at"),
+        )
+        
+        # Format databases for frontend
+        databases = []
+        for db in result.get("databases", []):
+            title = db.get("title", [])
+            name = title[0].get("plain_text", "Untitled") if title else "Untitled"
+            databases.append({
+                "id": db["id"],
+                "name": name,
+                "url": db.get("url"),
+            })
+        
+        return NotionOAuthCallbackResponse(
+            success=True,
+            integration=public_integration,
+            has_database=result["has_database"],
+            available_databases=databases,
+        )
+    except Exception as e:
+        logger.error(f"Notion OAuth callback failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/sync/notion/database")
+async def set_notion_database(
+    request: SetNotionDatabaseRequest,
+    user=Depends(get_current_user)
+):
+    """Set the Notion database to sync with."""
+    try:
+        await sync_service.set_notion_database(user.id, request.database_id)
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Failed to set Notion database: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/sync/{provider}/settings")
+async def update_sync_settings(
+    provider: str,
+    request: UpdateSyncSettingsRequest,
+    user=Depends(get_current_user)
+):
+    """Update sync settings for an integration."""
+    if provider not in ["notion", "obsidian", "anytype"]:
+        raise HTTPException(status_code=400, detail="Invalid provider")
+    
+    # Check auto-sync permission (Ultra only)
+    if request.auto_sync_enabled:
+        subscription = await notes_service.get_subscription_info(user.id)
+        if not subscription.limits.auto_sync:
+            raise HTTPException(
+                status_code=403,
+                detail="Auto-sync requires Ultra subscription"
+            )
+    
+    result = await sync_service.update_integration_settings(
+        user.id,
+        provider,
+        sync_mode=request.sync_mode,
+        auto_sync_enabled=request.auto_sync_enabled,
+    )
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    
+    return {"success": True}
+
+
+@router.delete("/sync/{provider}")
+async def disconnect_integration(
+    provider: str,
+    user=Depends(get_current_user)
+):
+    """Disconnect an integration."""
+    if provider not in ["notion", "obsidian", "anytype"]:
+        raise HTTPException(status_code=400, detail="Invalid provider")
+    
+    success = await sync_service.delete_integration(user.id, provider)
+    if not success:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    
+    return {"success": True}
+
+
+@router.post("/sync/notes/{note_id}", response_model=SyncNoteResponse)
+async def sync_single_note(
+    note_id: UUID,
+    request: SyncNoteRequest = SyncNoteRequest(),
+    user=Depends(get_current_user)
+):
+    """Sync a single note to connected integrations."""
+    # Check subscription
+    subscription = await notes_service.get_subscription_info(user.id)
+    if not subscription.limits.sync_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Sync feature requires Pro or Ultra subscription"
+        )
+    
+    # Get Notion integration
+    integration = await sync_service.get_integration(user.id, "notion")
+    if not integration or not integration.get("is_active"):
+        raise HTTPException(
+            status_code=400,
+            detail="No active Notion integration. Please connect Notion first."
+        )
+    
+    try:
+        result = await sync_service.sync_note_to_notion(
+            user.id, 
+            note_id, 
+            force=request.force
+        )
+        return SyncNoteResponse(**result)
+    except Exception as e:
+        logger.error(f"Failed to sync note {note_id}: {e}")
+        return SyncNoteResponse(status="failed", error=str(e))
+
+
+@router.post("/sync/notes/{note_id}/pull", response_model=SyncNoteResponse)
+async def pull_note_from_external(
+    note_id: UUID,
+    user=Depends(get_current_user)
+):
+    """Pull updates from Notion for a specific note."""
+    subscription = await notes_service.get_subscription_info(user.id)
+    if not subscription.limits.sync_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Sync feature requires Pro or Ultra subscription"
+        )
+    
+    try:
+        result = await sync_service.sync_note_from_notion(user.id, note_id)
+        return SyncNoteResponse(**result)
+    except Exception as e:
+        logger.error(f"Failed to pull note {note_id}: {e}")
+        return SyncNoteResponse(status="failed", error=str(e))
+
+
+@router.post("/sync/all", response_model=SyncAllResponse)
+async def sync_all_notes(user=Depends(get_current_user)):
+    """Sync all notes (Ultra plan feature)."""
+    # Check for Ultra plan
+    subscription = await notes_service.get_subscription_info(user.id)
+    if not subscription.limits.auto_sync:
+        raise HTTPException(
+            status_code=403,
+            detail="Bulk sync requires Ultra subscription"
+        )
+    
+    try:
+        result = await sync_service.sync_all_notes(user.id, "notion")
+        return SyncAllResponse(**result)
+    except Exception as e:
+        logger.error(f"Failed to sync all notes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sync/notes/{note_id}/resolve")
+async def resolve_sync_conflict(
+    note_id: UUID,
+    request: ResolveConflictRequest,
+    user=Depends(get_current_user)
+):
+    """Resolve a sync conflict."""
+    try:
+        result = await sync_service.resolve_conflict(
+            user.id,
+            note_id,
+            request.resolution,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to resolve conflict for note {note_id}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/sync/notes/{note_id}/status")
+async def get_note_sync_status(
+    note_id: UUID,
+    user=Depends(get_current_user)
+):
+    """Get sync status for a specific note."""
+    integration = await sync_service.get_integration(user.id, "notion")
+    if not integration:
+        return {"synced": False, "has_integration": False}
+    
+    status = await sync_service.get_note_sync_status(note_id, UUID(integration["id"]))
+    
+    return {
+        "synced": status is not None and status.get("sync_status") == "synced",
+        "has_integration": True,
+        "sync_status": status.get("sync_status") if status else None,
+        "external_url": status.get("external_url") if status else None,
+        "last_synced_at": status.get("last_synced_at") if status else None,
+        "has_conflict": status.get("sync_status") == "conflict" if status else False,
+    }
+
+
+@router.get("/sync/history", response_model=SyncHistoryResponse)
+async def get_sync_history(
+    limit: int = Query(default=50, ge=1, le=100),
+    user=Depends(get_current_user)
+):
+    """Get sync history for user."""
+    history = await sync_service.get_sync_history(user.id, limit)
+    
+    entries = [SyncHistoryEntry(**h) for h in history]
+    
+    return SyncHistoryResponse(history=entries, total=len(entries))

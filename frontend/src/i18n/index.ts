@@ -111,6 +111,65 @@ const translationsRu = {
   // Misc
   allNotesSync: 'Все заметки синхронизируются с этим аккаунтом',
   version: 'Версия',
+  
+  // Sync settings
+  syncSettings: 'Синхронизация',
+  syncDescription: 'Синхронизируйте заметки с внешними сервисами',
+  comingSoon: 'Скоро',
+  connected: 'Подключено',
+  connect: 'Подключить',
+  connecting: 'Подключение...',
+  disconnect: 'Отключить',
+  database: 'База данных',
+  syncMode: 'Режим синхронизации',
+  lastSync: 'Последняя синхр.',
+  never: 'Никогда',
+  justNow: 'Только что',
+  minutesAgo: '{count} мин. назад',
+  hoursAgo: '{count} ч. назад',
+  
+  // Sync modes
+  syncModeTwoWay: 'Двусторонняя',
+  syncModeTwoWayDesc: 'Изменения синхронизируются в обе стороны',
+  syncModeAppToNotion: 'Приложение → Notion',
+  syncModeAppToNotionDesc: 'Только отправка из приложения в Notion',
+  syncModeNotionToApp: 'Notion → Приложение',
+  syncModeNotionToAppDesc: 'Только получение из Notion в приложение',
+  selectSyncMode: 'Выберите режим синхронизации',
+  
+  // Database picker
+  selectDatabase: 'Выберите базу данных',
+  selectDatabaseDescription: 'Выберите базу данных Notion для синхронизации заметок',
+  
+  // Sync info
+  howSyncWorks: 'Как работает синхронизация',
+  proSyncManual: 'На Pro плане — ручная синхронизация',
+  proSyncPerNote: 'Нажмите кнопку синхронизации на каждой заметке',
+  ultraSyncAuto: 'Автоматическая синхронизация в фоне',
+  ultraSyncBackground: 'Все заметки синхронизируются автоматически',
+  syncRequiresPaidPlan: 'Синхронизация доступна на Pro и Ultra планах',
+  
+  // Sync actions
+  syncNote: 'Синхронизировать',
+  syncing: 'Синхронизация...',
+  synced: 'Синхронизировано',
+  syncError: 'Ошибка синхронизации',
+  syncConflict: 'Конфликт',
+  openInNotion: 'Открыть в Notion',
+  
+  // Conflict resolution
+  resolveConflict: 'Разрешить конфликт',
+  keepLocal: 'Оставить локальную версию',
+  keepExternal: 'Взять версию из Notion',
+  keepBoth: 'Сохранить обе версии',
+  
+  // Errors and permissions
+  syncRequiresPro: 'Для синхронизации нужен Pro план',
+  upgradeForSync: 'Обновите до Pro для синхронизации',
+  upgradeForAutoSync: 'Авто-синхронизация доступна на Ultra плане',
+  upgradeToUnlock: 'Обновите подписку для доступа',
+  connectionFailed: 'Не удалось подключиться',
+  operationFailed: 'Операция не выполнена',
 }
 
 const translationsEn: typeof translationsRu = {
@@ -221,6 +280,65 @@ const translationsEn: typeof translationsRu = {
   // Misc
   allNotesSync: 'All notes are synced with this account',
   version: 'Version',
+  
+  // Sync settings
+  syncSettings: 'Sync',
+  syncDescription: 'Sync notes with external services',
+  comingSoon: 'Coming soon',
+  connected: 'Connected',
+  connect: 'Connect',
+  connecting: 'Connecting...',
+  disconnect: 'Disconnect',
+  database: 'Database',
+  syncMode: 'Sync mode',
+  lastSync: 'Last sync',
+  never: 'Never',
+  justNow: 'Just now',
+  minutesAgo: '{count} min ago',
+  hoursAgo: '{count}h ago',
+  
+  // Sync modes
+  syncModeTwoWay: 'Two-way',
+  syncModeTwoWayDesc: 'Changes sync both ways',
+  syncModeAppToNotion: 'App → Notion',
+  syncModeAppToNotionDesc: 'Only push from app to Notion',
+  syncModeNotionToApp: 'Notion → App',
+  syncModeNotionToAppDesc: 'Only pull from Notion to app',
+  selectSyncMode: 'Select sync mode',
+  
+  // Database picker
+  selectDatabase: 'Select database',
+  selectDatabaseDescription: 'Choose a Notion database to sync notes with',
+  
+  // Sync info
+  howSyncWorks: 'How sync works',
+  proSyncManual: 'Pro plan — manual sync per note',
+  proSyncPerNote: 'Tap sync button on each note',
+  ultraSyncAuto: 'Automatic background sync',
+  ultraSyncBackground: 'All notes sync automatically',
+  syncRequiresPaidPlan: 'Sync requires Pro or Ultra plan',
+  
+  // Sync actions
+  syncNote: 'Sync',
+  syncing: 'Syncing...',
+  synced: 'Synced',
+  syncError: 'Sync error',
+  syncConflict: 'Conflict',
+  openInNotion: 'Open in Notion',
+  
+  // Conflict resolution
+  resolveConflict: 'Resolve conflict',
+  keepLocal: 'Keep local version',
+  keepExternal: 'Use Notion version',
+  keepBoth: 'Keep both versions',
+  
+  // Errors and permissions
+  syncRequiresPro: 'Sync requires Pro plan',
+  upgradeForSync: 'Upgrade to Pro for sync',
+  upgradeForAutoSync: 'Auto-sync requires Ultra plan',
+  upgradeToUnlock: 'Upgrade to unlock',
+  connectionFailed: 'Connection failed',
+  operationFailed: 'Operation failed',
 }
 
 export const translations = {

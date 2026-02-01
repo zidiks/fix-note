@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { useMutation } from '@tanstack/react-query'
-import { Note, api } from '../api/client'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Note, api, NoteSyncStatusResponse } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
+import { useSubscription } from '../stores/subscription'
+import { useI18n } from '../i18n'
 
 interface NoteDetailProps {
   note: Note
@@ -14,14 +16,20 @@ interface NoteDetailProps {
 }
 
 export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
-  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, switchInlineQuery, close } = useTelegram()
+  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, switchInlineQuery, close, openLink } = useTelegram()
+  const { subscription } = useSubscription()
+  const { t } = useI18n()
   const [isSharing, setIsSharing] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(note.content)
   const [editedSummary, setEditedSummary] = useState(note.summary || '')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const [isSyncing, setIsSyncing] = useState(false)
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const summaryTextareaRef = useRef<HTMLTextAreaElement>(null)
+  
+  // Check if sync is enabled for user
+  const canSync = subscription?.limits.sync_enabled ?? false
 
   const isVoice = note.source === 'voice'
   const icon = isVoice ? '🎤' : '📝'
@@ -103,6 +111,55 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       showAlert('Не удалось сохранить изменения')
     }
   })
+  
+  // Sync status query
+  const { data: syncStatus, refetch: refetchSyncStatus } = useQuery({
+    queryKey: ['syncStatus', note.id],
+    queryFn: () => api.getNoteSyncStatus(note.id),
+    enabled: canSync,
+    staleTime: 30000, // 30 seconds
+  })
+  
+  // Sync note mutation
+  const syncMutation = useMutation({
+    mutationFn: () => api.syncNote(note.id, false),
+    onSuccess: (result) => {
+      setIsSyncing(false)
+      if (result.status === 'success') {
+        hapticNotification('success')
+        refetchSyncStatus()
+      } else if (result.status === 'skipped') {
+        hapticImpact('light')
+        // Already synced, no changes
+      } else {
+        hapticNotification('error')
+        showAlert(result.error || t('syncError'))
+      }
+    },
+    onError: (error) => {
+      setIsSyncing(false)
+      hapticNotification('error')
+      showAlert(t('syncError'))
+      console.error('Sync failed:', error)
+    }
+  })
+  
+  // Handle sync button click
+  const handleSync = useCallback(() => {
+    if (!canSync || isSyncing) return
+    
+    hapticImpact('medium')
+    setIsSyncing(true)
+    syncMutation.mutate()
+  }, [canSync, isSyncing, hapticImpact, syncMutation])
+  
+  // Open note in Notion
+  const handleOpenInNotion = useCallback(() => {
+    if (syncStatus?.external_url) {
+      hapticImpact('light')
+      openLink(syncStatus.external_url)
+    }
+  }, [syncStatus, hapticImpact, openLink])
 
   const handleShareLink = () => {
     hapticImpact('medium')
@@ -343,7 +400,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         <motion.div
           className="liquid-glass--action-bar relative h-[48px] flex items-center justify-center overflow-hidden"
           animate={{
-            width: isEditing ? 104 : 216
+            width: isEditing ? 104 : (canSync && syncStatus?.has_integration ? 260 : 216)
           }}
           transition={{
             duration: 0.3,
@@ -400,17 +457,43 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                   transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 >
                   {/* Edit button */}
-                  <button
-                    onClick={handleEdit}
-                    className="action-bar-button"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                  </button>
+                                  <button
+                                    onClick={handleEdit}
+                                    className="action-bar-button"
+                                  >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                    </svg>
+                                  </button>
 
-                  {/* Share button */}
+                                  {/* Sync button - only for Pro/Ultra users with integration */}
+                                  {canSync && syncStatus?.has_integration && (
+                                    <button
+                                      onClick={syncStatus?.synced && syncStatus?.external_url ? handleOpenInNotion : handleSync}
+                                      disabled={isSyncing}
+                                      className={`action-bar-button ${syncStatus?.synced ? 'action-bar-button--synced' : ''}`}
+                                      title={syncStatus?.synced ? t('openInNotion') : t('syncNote')}
+                                    >
+                                      {isSyncing ? (
+                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                      ) : syncStatus?.synced ? (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                        </svg>
+                                      ) : (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                          <path d="M23 4V10H17"/>
+                                          <path d="M1 20V14H7"/>
+                                          <path d="M3.51 9A9 9 0 0 1 20.49 9L23 11.5"/>
+                                          <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
+                                        </svg>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {/* Share button */}
                   <button
                     onClick={handleShareLink}
                     disabled={isSharing}
