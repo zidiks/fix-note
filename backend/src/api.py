@@ -572,7 +572,7 @@ async def notion_oauth_callback_redirect(
     # The state contains user_id
     try:
         if state:
-            from ..db.supabase import get_supabase_client
+            from .db.supabase import get_supabase_client
             from datetime import datetime
             client = get_supabase_client()
             
@@ -668,7 +668,7 @@ async def check_pending_notion_oauth(user=Depends(get_current_user)):
     Check if there's a pending Notion OAuth code for this user.
     Called by Mini App when it regains focus to complete OAuth flow.
     """
-    from ..db.supabase import get_supabase_client
+    from .db.supabase import get_supabase_client
     client = get_supabase_client()
     
     # Check for pending OAuth code
@@ -699,7 +699,7 @@ async def check_pending_notion_oauth(user=Depends(get_current_user)):
 @router.delete("/sync/notion/pending")
 async def clear_pending_notion_oauth(user=Depends(get_current_user)):
     """Clear pending OAuth code after successful connection."""
-    from ..db.supabase import get_supabase_client
+    from .db.supabase import get_supabase_client
     client = get_supabase_client()
     
     client.table("pending_oauth").delete().eq(
