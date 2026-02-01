@@ -184,11 +184,11 @@ input, textarea {
   height: 100px;
   background: linear-gradient(
     to bottom,
-    rgb(var(--bg-primary) / 1) 0%,
-    rgb(var(--bg-primary) / 1) 52%, /* solid под хедером */
-    rgb(var(--bg-primary) / 0.8) 65%,
-    rgb(var(--bg-primary) / 0.4) 80%,
-    rgb(var(--bg-primary) / 0) 100%
+    color-mix(in srgb, var(--bg-primary) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg-primary) 100%, transparent) 52%,
+    color-mix(in srgb, var(--bg-primary) 80%, transparent) 65%,
+    color-mix(in srgb, var(--bg-primary) 40%, transparent) 80%,
+    color-mix(in srgb, var(--bg-primary) 0%, transparent) 100%
   );
   pointer-events: none;
   z-index: 35; /* Below header content (z-40) but above list */

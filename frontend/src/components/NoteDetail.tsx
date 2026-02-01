@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
@@ -39,7 +40,7 @@ const getFaviconUrl = (url: string): string => {
 const LinkPreview = ({ url, onClick }: { url: string; onClick: () => void }) => {
   const domain = getDomain(url)
   const displayUrl = url.length > 50 ? url.substring(0, 50) + '...' : url
-  
+
   return (
     <motion.a
       href={url}
@@ -51,40 +52,40 @@ const LinkPreview = ({ url, onClick }: { url: string; onClick: () => void }) => 
         window.open(url, '_blank', 'noopener,noreferrer')
       }}
       className="flex items-center gap-3 p-3 rounded-xl transition-all"
-      style={{ 
+      style={{
         backgroundColor: 'var(--bg-secondary)',
         border: '1px solid var(--separator)'
       }}
       whileTap={{ scale: 0.98 }}
     >
-      <img 
-        src={getFaviconUrl(url)} 
-        alt="" 
+      <img
+        src={getFaviconUrl(url)}
+        alt=""
         className="w-6 h-6 rounded"
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = 'none'
         }}
       />
       <div className="flex-1 min-w-0">
-        <p 
+        <p
           className="text-sm font-medium truncate"
           style={{ color: 'var(--accent)' }}
         >
           {domain}
         </p>
-        <p 
+        <p
           className="text-xs truncate"
           style={{ color: 'var(--text-secondary)' }}
         >
           {displayUrl}
         </p>
       </div>
-      <svg 
-        width="16" 
-        height="16" 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="currentColor" 
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
         strokeWidth="2"
         style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}
       >
@@ -99,11 +100,11 @@ const LinkPreview = ({ url, onClick }: { url: string; onClick: () => void }) => 
 // Image gallery component
 const ImageGallery = ({ images }: { images: string[] }) => {
   const [selectedImage, setSelectedImage] = useState<number | null>(null)
-  
+
   if (!images || images.length === 0) return null
-  
+
   const gridCols = images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
-  
+
   return (
     <>
       {/* Gallery grid */}
@@ -125,7 +126,7 @@ const ImageGallery = ({ images }: { images: string[] }) => {
           </motion.div>
         ))}
       </div>
-      
+
       {/* Lightbox */}
       <AnimatePresence>
         {selectedImage !== null && (
@@ -143,7 +144,7 @@ const ImageGallery = ({ images }: { images: string[] }) => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             />
-            
+
             {/* Image */}
             <motion.img
               src={images[selectedImage]}
@@ -154,7 +155,7 @@ const ImageGallery = ({ images }: { images: string[] }) => {
               exit={{ scale: 0.8, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             />
-            
+
             {/* Close button */}
             <motion.button
               className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
@@ -168,7 +169,7 @@ const ImageGallery = ({ images }: { images: string[] }) => {
                 <path d="M18 6 6 18M6 6l12 12" />
               </svg>
             </motion.button>
-            
+
             {/* Navigation arrows */}
             {images.length > 1 && (
               <>
@@ -202,7 +203,7 @@ const ImageGallery = ({ images }: { images: string[] }) => {
                 )}
               </>
             )}
-            
+
             {/* Image counter */}
             {images.length > 1 && (
               <motion.div
@@ -222,10 +223,10 @@ const ImageGallery = ({ images }: { images: string[] }) => {
 }
 
 // Toast notification component
-const SyncToast = ({ message, type, onClose }: { 
+const SyncToast = ({ message, type, onClose }: {
   message: string
   type: 'success' | 'error' | 'info'
-  onClose: () => void 
+  onClose: () => void
 }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 3000)
@@ -252,17 +253,17 @@ const SyncToast = ({ message, type, onClose }: {
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
       className="fixed top-4 left-4 right-4 z-[200] safe-area-top"
     >
-      <div 
+      <div
         className="mx-auto max-w-sm rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg"
         style={{
           background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
           border: '1px solid rgba(255,255,255,0.2)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1)'
         }}
       >
-        <span 
+        <span
           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-bold"
           style={{ backgroundColor: colorMap[type] }}
         >
@@ -296,14 +297,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const summaryTextareaRef = useRef<HTMLTextAreaElement>(null)
-  
+
   // Check if sync is enabled for user
   const canSync = subscription?.limits.sync_enabled ?? false
 
   const isVoice = note.source === 'voice'
   const hasImages = note.images && note.images.length > 0
   const icon = hasImages ? '🖼️' : isVoice ? '🎤' : '📝'
-  
+
   // Extract URLs from content
   const urls = useMemo(() => extractUrls(note.content), [note.content])
 
@@ -378,7 +379,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       hapticNotification('success')
       setIsEditing(false)
       onUpdate?.(updatedNote)
-      
+
       // Auto-sync to Notion if already synced
       if (canSync && syncStatus?.synced) {
         setTimeout(() => {
@@ -392,7 +393,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       showAlert('Не удалось сохранить изменения')
     }
   })
-  
+
   // Sync status query
   const { data: syncStatus, refetch: refetchSyncStatus } = useQuery({
     queryKey: ['syncStatus', note.id],
@@ -400,7 +401,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     enabled: canSync,
     staleTime: 30000, // 30 seconds
   })
-  
+
   // Show toast helper
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type })
@@ -430,11 +431,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       console.error('Sync failed:', error)
     }
   })
-  
+
   // Handle sync button click
   const handleSync = useCallback(() => {
     if (!canSync || isSyncing) return
-    
+
     hapticImpact('medium')
     setIsSyncing(true)
     syncMutation.mutate()
@@ -515,11 +516,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     // Get the textarea's bounding rect
     const rect = textarea.getBoundingClientRect()
     const viewportHeight = window.visualViewport?.height || window.innerHeight
-    
+
     // Calculate available space (viewport minus action bar height ~70px)
     const actionBarSpace = 80
     const availableBottom = viewportHeight - actionBarSpace
-    
+
     // If textarea bottom is below available space, scroll to show it
     if (rect.bottom > availableBottom) {
       const scrollAmount = rect.bottom - availableBottom + 20
@@ -539,21 +540,21 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       {/* Toast notification */}
       <AnimatePresence>
         {toast && (
-          <SyncToast 
-            message={toast.message} 
-            type={toast.type} 
-            onClose={() => setToast(null)} 
+          <SyncToast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
           />
         )}
       </AnimatePresence>
 
       {/* Content */}
-      <main 
-        className="px-4 pt-4 safe-area-top" 
-        style={{ 
-          paddingBottom: isEditing && keyboardHeight > 0 
-            ? keyboardHeight + 80 
-            : 'calc(100px + env(safe-area-inset-bottom, 0px))' 
+      <main
+        className="px-4 pt-4 safe-area-top"
+        style={{
+          paddingBottom: isEditing && keyboardHeight > 0
+            ? keyboardHeight + 80
+            : 'calc(100px + env(safe-area-inset-bottom, 0px))'
         }}
       >
         {/* Images gallery - show at the top if there are images */}
@@ -680,9 +681,9 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             </h3>
             <div className="space-y-2">
               {urls.map((url, index) => (
-                <LinkPreview 
-                  key={index} 
-                  url={url} 
+                <LinkPreview
+                  key={index}
+                  url={url}
                   onClick={() => hapticImpact('light')}
                 />
               ))}
@@ -695,11 +696,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       <motion.div
         className="bottom-fade"
         initial={{ opacity: 0 }}
-        animate={{ 
+        animate={{
           opacity: 1,
           bottom: keyboardHeight > 0 ? keyboardHeight : 0
         }}
-        transition={{ 
+        transition={{
           delay: 0.15,
           duration: 0.25,
           ease: [0.25, 0.46, 0.45, 0.94]
@@ -707,15 +708,15 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       />
 
       {/* Floating action bar */}
-      <motion.div 
+      <motion.div
         className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center bottom-[calc(12px+env(safe-area-inset-bottom,0px))]"
         initial={{ opacity: 0, y: 20 }}
-        animate={{ 
-          opacity: 1, 
+        animate={{
+          opacity: 1,
           y: 0,
           bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
         }}
-        transition={{ 
+        transition={{
           delay: 0.15,
           duration: 0.25,
           ease: [0.25, 0.46, 0.45, 0.94]
@@ -724,7 +725,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         <motion.div
           className="liquid-glass--action-bar relative h-[48px] flex items-center justify-center overflow-hidden"
           animate={{
-            width: isEditing ? 104 : (canSync && syncStatus?.has_integration ? 260 : 216)
+            width: isEditing ? 104 : 268
           }}
           transition={{
             duration: 0.3,
@@ -792,11 +793,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                                   </button>
 
                                   {/* Sync button - only for Pro/Ultra users with integration */}
-                                  {canSync && syncStatus?.has_integration && (
+                                  {(
                                     <button
                                       onClick={handleSync}
                                       disabled={isSyncing}
-                                      className={`action-bar-button ${syncStatus?.synced ? 'action-bar-button--synced' : ''}`}
+                                      className={clsx(
+                                        `action-bar-button transition easy-in-out ${syncStatus?.synced ? 'action-bar-button--synced' : ''}`,
+                                        { 'pointer-none opacity-50': !(canSync || syncStatus?.has_integration) }
+                                      )}
                                       title={t('syncNote')}
                                     >
                                       {isSyncing ? (

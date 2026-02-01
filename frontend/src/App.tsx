@@ -292,7 +292,7 @@ function App() {
             onUpdate={handleUpdateNote}
           />
         ) : (
-          <div key="list" className="notes-list-container">
+          <div key="list" className="notes-list-container" style={{ height: '100dvh', overflow: 'hidden' }}>
             {/* Top fade gradient */}
             <div className="top-fade" />
 
@@ -329,7 +329,13 @@ function App() {
             </header>
 
             {/* Content - with top padding for fixed header and bottom padding for search bar */}
-            <main className="pt-[52px] mb-24 safe-area-bottom">
+            <main 
+              className="pt-[52px] pb-24 safe-area-bottom overflow-y-auto"
+              style={{ 
+                height: '100%',
+                maxHeight: '100%'
+              }}
+            >
               <NotesList
                 searchQuery={searchQuery}
                 onSelectNote={handleSelectNote}
