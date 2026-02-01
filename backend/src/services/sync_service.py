@@ -615,7 +615,7 @@ class SyncService:
         note_id: UUID, 
         force: bool = False
     ) -> dict:
-        """Sync a single note to Notion."""
+        """Sync a single note to Notion with two-way sync support."""
         # Get integration
         integration = await self.get_integration(user_id, "notion")
         if not integration or not integration.get("is_active"):
@@ -626,8 +626,6 @@ class SyncService:
         
         # Check sync mode
         sync_mode = integration.get("sync_mode", "two_way")
-        if sync_mode == "external_to_app":
-            raise ValueError("Sync mode is set to Notion → App only")
         
         # Get note
         note_result = self.client.table("notes").select("*").eq(
@@ -642,14 +640,52 @@ class SyncService:
         # Check if already synced
         sync_status = await self.get_note_sync_status(note_id, UUID(integration["id"]))
         
+        notion_client = NotionClient(integration["access_token"])
+        
+        # If already synced, check for two-way sync
+        if sync_status and sync_status.get("external_id"):
+            try:
+                # Get Notion page to check last edited time
+                notion_page = await notion_client.get_page(sync_status["external_id"])
+                notion_last_edited = notion_page.get("last_edited_time", "")
+                local_updated_at = note.get("updated_at", note.get("created_at", ""))
+                
+                # Parse dates for comparison
+                from dateutil import parser as date_parser
+                notion_time = date_parser.isoparse(notion_last_edited) if notion_last_edited else None
+                local_time = date_parser.isoparse(local_updated_at) if local_updated_at else None
+                
+                # Two-way sync: determine which is newer
+                if sync_mode == "two_way" and notion_time and local_time:
+                    # Add small buffer (5 seconds) to avoid sync loops
+                    from datetime import timedelta
+                    if notion_time > local_time + timedelta(seconds=5):
+                        # Notion is newer - pull changes
+                        return await self._pull_from_notion(
+                            user_id, note_id, integration, sync_status, notion_client
+                        )
+                
+                # Check if mode allows pushing to Notion
+                if sync_mode == "external_to_app":
+                    # Only pull from Notion, don't push
+                    return await self._pull_from_notion(
+                        user_id, note_id, integration, sync_status, notion_client
+                    )
+                    
+            except Exception as e:
+                logger.warning(f"Could not check Notion page status: {e}")
+                # Continue with push if we can't check
+        
+        # Check if mode allows pushing
+        if sync_mode == "external_to_app":
+            raise ValueError("Sync mode is set to Notion → App only")
+        
         # Compute content hash
         local_hash = self._compute_content_hash(note["content"], note.get("summary"))
         
         # Skip if not changed and not forced
         if not force and sync_status and sync_status.get("local_content_hash") == local_hash:
             return {"status": "skipped", "reason": "no_changes"}
-        
-        notion_client = NotionClient(integration["access_token"])
         
         try:
             note_data = {
@@ -729,6 +765,131 @@ class SyncService:
                 status="failed",
                 error_message=str(e),
             )
+            
+            raise
+    
+    async def _pull_from_notion(
+        self,
+        user_id: UUID,
+        note_id: UUID,
+        integration: dict,
+        sync_status: dict,
+        notion_client: NotionClient
+    ) -> dict:
+        """Pull changes from Notion page to local note."""
+        try:
+            page_id = sync_status["external_id"]
+            
+            # Get page content (blocks)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{notion_client.BASE_URL}/blocks/{page_id}/children",
+                    headers=notion_client.headers,
+                )
+                response.raise_for_status()
+                blocks = response.json().get("results", [])
+            
+            # Extract text content from blocks
+            content_parts = []
+            summary = None
+            
+            for block in blocks:
+                block_type = block.get("type")
+                
+                if block_type == "callout":
+                    # Callout is our summary
+                    callout = block.get("callout", {})
+                    rich_text = callout.get("rich_text", [])
+                    summary = "".join([t.get("plain_text", "") for t in rich_text])
+                    
+                elif block_type == "paragraph":
+                    paragraph = block.get("paragraph", {})
+                    rich_text = paragraph.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in rich_text])
+                    # Skip metadata line
+                    if text and not text.startswith("📱 FixNote"):
+                        content_parts.append(text)
+                        
+                elif block_type == "heading_1":
+                    h1 = block.get("heading_1", {})
+                    rich_text = h1.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in rich_text])
+                    if text:
+                        content_parts.append(f"# {text}")
+                        
+                elif block_type == "heading_2":
+                    h2 = block.get("heading_2", {})
+                    rich_text = h2.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in rich_text])
+                    if text:
+                        content_parts.append(f"## {text}")
+                        
+                elif block_type == "heading_3":
+                    h3 = block.get("heading_3", {})
+                    rich_text = h3.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in rich_text])
+                    if text:
+                        content_parts.append(f"### {text}")
+                        
+                elif block_type == "bulleted_list_item":
+                    item = block.get("bulleted_list_item", {})
+                    rich_text = item.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in rich_text])
+                    if text:
+                        content_parts.append(f"• {text}")
+                        
+                elif block_type == "numbered_list_item":
+                    item = block.get("numbered_list_item", {})
+                    rich_text = item.get("rich_text", [])
+                    text = "".join([t.get("plain_text", "") for t in rich_text])
+                    if text:
+                        content_parts.append(f"- {text}")
+            
+            content = "\n".join(content_parts)
+            
+            if not content.strip():
+                return {"status": "skipped", "reason": "no_content_in_notion"}
+            
+            # Update local note
+            update_data = {
+                "content": content,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            if summary:
+                update_data["summary"] = summary
+            
+            self.client.table("notes").update(update_data).eq(
+                "id", str(note_id)
+            ).execute()
+            
+            # Update sync status
+            local_hash = self._compute_content_hash(content, summary)
+            await self.update_note_sync_status(
+                note_id=note_id,
+                integration_id=UUID(integration["id"]),
+                sync_status="synced",
+                local_content_hash=local_hash,
+            )
+            
+            # Record sync history
+            await self._record_sync_history(
+                user_id=user_id,
+                integration_id=UUID(integration["id"]),
+                note_id=note_id,
+                operation="pull",
+                direction="from_external",
+                status="success",
+            )
+            
+            return {
+                "status": "success",
+                "operation": "pull",
+                "direction": "from_notion",
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to pull note {note_id} from Notion: {e}")
+            raise
             
             raise
     

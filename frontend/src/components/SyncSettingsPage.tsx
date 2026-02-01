@@ -32,6 +32,8 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
   const [availableDatabases, setAvailableDatabases] = useState<NotionDatabase[]>([])
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationConnection | null>(null)
   const [showSyncModeModal, setShowSyncModeModal] = useState(false)
+  const [isSyncingAll, setIsSyncingAll] = useState(false)
+  const [syncAllResult, setSyncAllResult] = useState<{ synced: number; failed: number } | null>(null)
   
   // Permission checks
   const canSync = subscription?.limits.sync_enabled ?? false
@@ -266,6 +268,37 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
     } catch (error) {
       console.error('Failed to disconnect:', error)
       showAlert(t('operationFailed'))
+    }
+  }
+  
+  // Sync all notes
+  const handleSyncAll = async () => {
+    if (isSyncingAll) return
+    
+    hapticImpact('medium')
+    setIsSyncingAll(true)
+    setSyncAllResult(null)
+    
+    try {
+      const result = await api.syncAllNotes()
+      
+      if (result.synced > 0 || result.failed === 0) {
+        hapticNotification('success')
+      } else {
+        hapticNotification('error')
+      }
+      
+      setSyncAllResult({ synced: result.synced, failed: result.failed })
+      await loadIntegrations() // Refresh last sync time
+      
+      // Hide result after 5 seconds
+      setTimeout(() => setSyncAllResult(null), 5000)
+    } catch (error) {
+      console.error('Failed to sync all notes:', error)
+      hapticNotification('error')
+      showAlert(t('syncError'))
+    } finally {
+      setIsSyncingAll(false)
     }
   }
   
@@ -505,17 +538,16 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
                       </div>
                       <button
                         onClick={() => handleAutoSyncToggle(integration)}
-                        className={`relative w-12 h-7 rounded-full transition-colors ${
-                          integration.auto_sync_enabled ? 'bg-green-500' : ''
-                        }`}
+                        className="relative w-[51px] h-[31px] rounded-full transition-colors duration-200"
                         style={{ 
-                          backgroundColor: integration.auto_sync_enabled ? '#34C759' : 'var(--bg-tertiary)'
+                          backgroundColor: integration.auto_sync_enabled ? '#34C759' : 'rgba(120, 120, 128, 0.32)'
                         }}
                       >
                         <span 
-                          className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform shadow-sm ${
-                            integration.auto_sync_enabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
+                          className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white transition-transform duration-200 shadow-sm"
+                          style={{
+                            transform: integration.auto_sync_enabled ? 'translateX(20px)' : 'translateX(0)'
+                          }}
                         />
                       </button>
                     </div>
@@ -533,6 +565,61 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
                         {formatLastSync(integration.last_sync_at)}
                       </span>
                     </div>
+                    
+                    {/* Sync all button */}
+                    {integration.database_id && (
+                      <div className="px-4 py-3">
+                        <button
+                          onClick={handleSyncAll}
+                          disabled={isSyncingAll}
+                          className="w-full py-2.5 rounded-xl font-medium transition-all active:scale-95 flex items-center justify-center gap-2"
+                          style={{ 
+                            backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                            color: '#007AFF'
+                          }}
+                        >
+                          {isSyncingAll ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              <span>{t('syncingAll')}</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <path d="M23 4V10H17"/>
+                                <path d="M1 20V14H7"/>
+                                <path d="M3.51 9A9 9 0 0 1 20.49 9L23 11.5"/>
+                                <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
+                              </svg>
+                              <span>{t('syncAllNotes')}</span>
+                            </>
+                          )}
+                        </button>
+                        
+                        {/* Sync result */}
+                        <AnimatePresence>
+                          {syncAllResult && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="mt-2 text-center text-sm"
+                              style={{ color: syncAllResult.failed > 0 ? '#FF9500' : '#34C759' }}
+                            >
+                              {syncAllResult.synced > 0 && (
+                                <span>✓ {t('syncedCount', { count: syncAllResult.synced } as any)}</span>
+                              )}
+                              {syncAllResult.failed > 0 && (
+                                <span className="ml-2">⚠ {t('failedCount', { count: syncAllResult.failed } as any)}</span>
+                              )}
+                              {syncAllResult.synced === 0 && syncAllResult.failed === 0 && (
+                                <span>{t('allUpToDate')}</span>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    )}
                     
                     {/* Disconnect button */}
                     <div className="px-4 py-3">

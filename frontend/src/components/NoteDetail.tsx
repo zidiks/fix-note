@@ -8,6 +8,61 @@ import { useTelegram } from '../hooks/useTelegram'
 import { useSubscription } from '../stores/subscription'
 import { useI18n } from '../i18n'
 
+// Toast notification component
+const SyncToast = ({ message, type, onClose }: { 
+  message: string
+  type: 'success' | 'error' | 'info'
+  onClose: () => void 
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000)
+    return () => clearTimeout(timer)
+  }, [onClose])
+
+  const iconMap = {
+    success: '✓',
+    error: '✕',
+    info: '↻'
+  }
+
+  const colorMap = {
+    success: 'rgba(52, 199, 89, 0.9)',
+    error: 'rgba(255, 59, 48, 0.9)',
+    info: 'rgba(0, 122, 255, 0.9)'
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -50, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -30, scale: 0.9 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      className="fixed top-4 left-4 right-4 z-[200] safe-area-top"
+    >
+      <div 
+        className="mx-auto max-w-sm rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)',
+          backdropFilter: 'blur(20px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1)'
+        }}
+      >
+        <span 
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-bold"
+          style={{ backgroundColor: colorMap[type] }}
+        >
+          {iconMap[type]}
+        </span>
+        <span style={{ color: 'var(--text-primary)' }} className="text-sm font-medium flex-1">
+          {message}
+        </span>
+      </div>
+    </motion.div>
+  )
+}
+
 interface NoteDetailProps {
   note: Note
   onBack?: () => void
@@ -16,7 +71,7 @@ interface NoteDetailProps {
 }
 
 export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
-  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, switchInlineQuery, close, openLink } = useTelegram()
+  const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, switchInlineQuery, close } = useTelegram()
   const { subscription } = useSubscription()
   const { t } = useI18n()
   const [isSharing, setIsSharing] = useState(false)
@@ -25,6 +80,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [editedSummary, setEditedSummary] = useState(note.summary || '')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const summaryTextareaRef = useRef<HTMLTextAreaElement>(null)
   
@@ -105,6 +161,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       hapticNotification('success')
       setIsEditing(false)
       onUpdate?.(updatedNote)
+      
+      // Auto-sync to Notion if already synced
+      if (canSync && syncStatus?.synced) {
+        setTimeout(() => {
+          setIsSyncing(true)
+          syncMutation.mutate()
+        }, 500)
+      }
     },
     onError: () => {
       hapticNotification('error')
@@ -120,6 +184,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     staleTime: 30000, // 30 seconds
   })
   
+  // Show toast helper
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    setToast({ message, type })
+  }, [])
+
   // Sync note mutation
   const syncMutation = useMutation({
     mutationFn: () => api.syncNote(note.id, false),
@@ -127,19 +196,20 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       setIsSyncing(false)
       if (result.status === 'success') {
         hapticNotification('success')
+        showToast(t('syncSuccess'), 'success')
         refetchSyncStatus()
       } else if (result.status === 'skipped') {
         hapticImpact('light')
-        // Already synced, no changes
+        showToast(t('syncSkipped'), 'info')
       } else {
         hapticNotification('error')
-        showAlert(result.error || t('syncError'))
+        showToast(result.error || t('syncError'), 'error')
       }
     },
     onError: (error) => {
       setIsSyncing(false)
       hapticNotification('error')
-      showAlert(t('syncError'))
+      showToast(t('syncError'), 'error')
       console.error('Sync failed:', error)
     }
   })
@@ -152,14 +222,6 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     setIsSyncing(true)
     syncMutation.mutate()
   }, [canSync, isSyncing, hapticImpact, syncMutation])
-  
-  // Open note in Notion
-  const handleOpenInNotion = useCallback(() => {
-    if (syncStatus?.external_url) {
-      hapticImpact('light')
-      openLink(syncStatus.external_url)
-    }
-  }, [syncStatus, hapticImpact, openLink])
 
   const handleShareLink = () => {
     hapticImpact('medium')
@@ -257,6 +319,17 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       transition={{ duration: 0.2 }}
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
+      {/* Toast notification */}
+      <AnimatePresence>
+        {toast && (
+          <SyncToast 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => setToast(null)} 
+          />
+        )}
+      </AnimatePresence>
+
       {/* Content */}
       <main 
         className="px-4 pt-4 safe-area-top" 
@@ -470,18 +543,13 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                                   {/* Sync button - only for Pro/Ultra users with integration */}
                                   {canSync && syncStatus?.has_integration && (
                                     <button
-                                      onClick={syncStatus?.synced && syncStatus?.external_url ? handleOpenInNotion : handleSync}
+                                      onClick={handleSync}
                                       disabled={isSyncing}
                                       className={`action-bar-button ${syncStatus?.synced ? 'action-bar-button--synced' : ''}`}
-                                      title={syncStatus?.synced ? t('openInNotion') : t('syncNote')}
+                                      title={t('syncNote')}
                                     >
                                       {isSyncing ? (
                                         <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                      ) : syncStatus?.synced ? (
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                                        </svg>
                                       ) : (
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                           <path d="M23 4V10H17"/>
