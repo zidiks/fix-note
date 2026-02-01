@@ -523,7 +523,7 @@ async def notion_oauth_callback_redirect(
 ):
     """
     Handle Notion OAuth redirect (GET).
-    Returns HTML page that passes code back to Telegram Mini App.
+    Stores pending OAuth code in database and shows success page.
     """
     from fastapi.responses import HTMLResponse
     
@@ -568,10 +568,22 @@ async def notion_oauth_callback_redirect(
         """
         return HTMLResponse(content=html_content)
     
-    # Success - show page with code to copy or auto-redirect
-    # The state contains user_id, we'll pass code back to Mini App
-    telegram_bot_username = "fixnote_bot"  # Your bot username
-    mini_app_url = f"https://t.me/{telegram_bot_username}/app?startapp=notion_code_{code}"
+    # Store pending OAuth code in database
+    # The state contains user_id
+    try:
+        if state:
+            from ..db.supabase import get_supabase_client
+            client = get_supabase_client()
+            
+            # Store pending OAuth code (expires in 5 minutes)
+            client.table("pending_oauth").upsert({
+                "user_id": state,
+                "provider": "notion",
+                "code": code,
+                "created_at": "now()",
+            }, on_conflict="user_id,provider").execute()
+    except Exception as e:
+        logger.error(f"Failed to store pending OAuth code: {e}")
     
     html_content = f"""
     <!DOCTYPE html>
@@ -614,16 +626,6 @@ async def notion_oauth_callback_redirect(
                 transform: scale(0.95);
                 opacity: 0.9;
             }}
-            .code {{
-                background: rgba(255,255,255,0.1);
-                padding: 12px 16px;
-                border-radius: 8px;
-                font-family: monospace;
-                font-size: 12px;
-                word-break: break-all;
-                margin: 16px 0;
-                color: #8e8e93;
-            }}
             .hint {{
                 font-size: 14px;
                 color: #636366;
@@ -635,7 +637,7 @@ async def notion_oauth_callback_redirect(
         <div class="container">
             <div class="icon">✅</div>
             <h1>Notion подключён!</h1>
-            <p>Авторизация прошла успешно.<br>Вернитесь в Telegram для завершения настройки.</p>
+            <p>Авторизация прошла успешно.<br>Вернитесь в Telegram — подключение завершится автоматически.</p>
             
             <a href="https://t.me/fixnote_bot" class="btn">
                 Открыть FixNote в Telegram
@@ -644,22 +646,58 @@ async def notion_oauth_callback_redirect(
             <div class="hint">
                 Если кнопка не работает, откройте @fixnote_bot в Telegram вручную
             </div>
-            
-            <input type="hidden" id="oauth-code" value="{code}" />
-            <input type="hidden" id="oauth-state" value="{state}" />
         </div>
-        
-        <script>
-            // Try to store the code in localStorage for when user returns to Mini App
-            try {{
-                localStorage.setItem('notion_oauth_code', '{code}');
-                localStorage.setItem('notion_oauth_state', '{state}');
-            }} catch(e) {{}}
-        </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html_content)
+
+
+@router.get("/sync/notion/pending")
+async def check_pending_notion_oauth(user=Depends(get_current_user)):
+    """
+    Check if there's a pending Notion OAuth code for this user.
+    Called by Mini App when it regains focus to complete OAuth flow.
+    """
+    from ..db.supabase import get_supabase_client
+    client = get_supabase_client()
+    
+    # Check for pending OAuth code
+    result = client.table("pending_oauth").select("*").eq(
+        "user_id", str(user.id)
+    ).eq("provider", "notion").execute()
+    
+    if not result.data:
+        return {"pending": False}
+    
+    pending = result.data[0]
+    
+    # Check if expired (older than 5 minutes)
+    from datetime import datetime, timedelta
+    created_at = datetime.fromisoformat(pending["created_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+    if datetime.utcnow() - created_at > timedelta(minutes=5):
+        # Delete expired code
+        client.table("pending_oauth").delete().eq("id", pending["id"]).execute()
+        return {"pending": False, "expired": True}
+    
+    # Return the code for the frontend to complete the OAuth
+    return {
+        "pending": True,
+        "code": pending["code"],
+    }
+
+
+@router.delete("/sync/notion/pending")
+async def clear_pending_notion_oauth(user=Depends(get_current_user)):
+    """Clear pending OAuth code after successful connection."""
+    from ..db.supabase import get_supabase_client
+    client = get_supabase_client()
+    
+    client.table("pending_oauth").delete().eq(
+        "user_id", str(user.id)
+    ).eq("provider", "notion").execute()
+    
+    return {"success": True}
 
 
 @router.post("/sync/notion/callback", response_model=NotionOAuthCallbackResponse)

@@ -61,15 +61,7 @@ function App() {
     if (startParam) {
       // Check if it's a Notion OAuth code (format: notion_code_XXXXX)
       if (startParam.startsWith('notion_code_')) {
-        const code = startParam.replace('notion_code_', '')
-        // Store in localStorage for SyncSettingsPage to pick up
-        try {
-          localStorage.setItem('notion_oauth_code', code)
-          localStorage.setItem('notion_oauth_state', '')
-        } catch (e) {
-          // localStorage not available
-        }
-        // Navigate to sync settings
+        // Navigate to sync settings - it will check for pending OAuth in database
         setViewState('sync')
       } else {
         // Assume it's a share token

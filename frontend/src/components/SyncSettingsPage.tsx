@@ -56,7 +56,50 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
     loadIntegrations()
   }, [loadIntegrations])
   
-  // Handle OAuth callback from URL or localStorage
+  // Handle OAuth callback - defined first so other hooks can use it
+  const handleNotionCallback = useCallback(async (code: string, state: string) => {
+    setIsConnecting(true)
+    
+    try {
+      const result = await api.completeNotionOAuth(code, state)
+      
+      if (result.success) {
+        hapticNotification('success')
+        
+        if (!result.has_database && result.available_databases) {
+          // Show database picker
+          setAvailableDatabases(result.available_databases)
+          setShowDatabasePicker(true)
+        }
+        
+        await loadIntegrations()
+      } else {
+        showAlert(t('connectionFailed'))
+      }
+    } catch (error) {
+      console.error('OAuth callback failed:', error)
+      showAlert(t('connectionFailed'))
+    } finally {
+      setIsConnecting(false)
+    }
+  }, [hapticNotification, showAlert, t, loadIntegrations])
+  
+  // Check for pending OAuth when page loads or regains focus
+  const checkPendingOAuth = useCallback(async () => {
+    try {
+      const result = await api.checkPendingNotionOAuth()
+      if (result.pending && result.code) {
+        // Found pending OAuth code - complete the flow
+        await handleNotionCallback(result.code, '')
+        // Clear the pending code
+        await api.clearPendingNotionOAuth()
+      }
+    } catch (error) {
+      console.error('Failed to check pending OAuth:', error)
+    }
+  }, [handleNotionCallback])
+  
+  // Handle OAuth callback from URL, localStorage, or pending in DB
   useEffect(() => {
     // First check URL params (direct redirect)
     const params = new URLSearchParams(window.location.search)
@@ -85,8 +128,29 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       if (params.get('code')) {
         window.history.replaceState({}, '', window.location.pathname)
       }
+    } else {
+      // No code in URL or localStorage - check database for pending OAuth
+      checkPendingOAuth()
     }
-  }, [])
+  }, [checkPendingOAuth, handleNotionCallback])
+  
+  // Also check when page regains focus (user returns from external browser)
+  useEffect(() => {
+    const handleFocus = () => {
+      checkPendingOAuth()
+    }
+    
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkPendingOAuth()
+      }
+    })
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [checkPendingOAuth])
   
   // Connect to Notion
   const handleConnectNotion = async () => {
@@ -105,34 +169,6 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       openLink(authorization_url)
     } catch (error) {
       console.error('Failed to start OAuth:', error)
-      showAlert(t('connectionFailed'))
-    } finally {
-      setIsConnecting(false)
-    }
-  }
-  
-  // Handle OAuth callback
-  const handleNotionCallback = async (code: string, state: string) => {
-    setIsConnecting(true)
-    
-    try {
-      const result = await api.completeNotionOAuth(code, state)
-      
-      if (result.success) {
-        hapticNotification('success')
-        
-        if (!result.has_database && result.available_databases) {
-          // Show database picker
-          setAvailableDatabases(result.available_databases)
-          setShowDatabasePicker(true)
-        }
-        
-        await loadIntegrations()
-      } else {
-        showAlert(t('connectionFailed'))
-      }
-    } catch (error) {
-      console.error('OAuth callback failed:', error)
       showAlert(t('connectionFailed'))
     } finally {
       setIsConnecting(false)

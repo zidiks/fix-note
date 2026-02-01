@@ -371,6 +371,16 @@ export const api = {
     return fetchWithAuth('/sync/notion/auth')
   },
   
+  async checkPendingNotionOAuth(): Promise<{ pending: boolean; code?: string; expired?: boolean }> {
+    return fetchWithAuth('/sync/notion/pending')
+  },
+  
+  async clearPendingNotionOAuth(): Promise<{ success: boolean }> {
+    return fetchWithAuth('/sync/notion/pending', {
+      method: 'DELETE',
+    })
+  },
+  
   async completeNotionOAuth(code: string, state: string): Promise<NotionOAuthCallbackResponse> {
     return fetchWithAuth('/sync/notion/callback', {
       method: 'POST',

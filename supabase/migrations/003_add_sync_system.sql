@@ -234,6 +234,33 @@ BEGIN
 END;
 $$;
 
+-- Pending OAuth table (for cross-browser OAuth flow)
+CREATE TABLE IF NOT EXISTS pending_oauth (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    provider integration_provider NOT NULL,
+    code TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- One pending OAuth per provider per user
+    UNIQUE(user_id, provider)
+);
+
+-- Auto-delete old pending OAuth codes (older than 5 minutes)
+CREATE INDEX IF NOT EXISTS idx_pending_oauth_created ON pending_oauth(created_at);
+
+-- RLS for pending_oauth
+ALTER TABLE pending_oauth ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own pending oauth" ON pending_oauth;
+CREATE POLICY "Users can view own pending oauth" ON pending_oauth FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can insert pending oauth" ON pending_oauth;
+CREATE POLICY "Users can insert pending oauth" ON pending_oauth FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can delete pending oauth" ON pending_oauth;
+CREATE POLICY "Users can delete pending oauth" ON pending_oauth FOR DELETE USING (true);
+
 -- Function to record sync operation
 CREATE OR REPLACE FUNCTION record_sync_operation(
     p_user_id UUID,
