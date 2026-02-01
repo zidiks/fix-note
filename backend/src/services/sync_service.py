@@ -117,26 +117,69 @@ class NotionClient:
     
     async def create_page(self, database_id: str, note_data: dict) -> dict:
         """Create a new page in the database."""
-        # Truncate content for title (Notion limit is 2000 chars for rich_text)
-        title = note_data.get("content", "")[:100]
-        if len(note_data.get("content", "")) > 100:
+        # First, get database schema to find the title property name
+        db_info = await self.get_database(database_id)
+        title_property_name = "Name"  # Default
+        
+        # Find the title property (every database has exactly one)
+        for prop_name, prop_info in db_info.get("properties", {}).items():
+            if prop_info.get("type") == "title":
+                title_property_name = prop_name
+                break
+        
+        # Create title from content (first 100 chars)
+        content = note_data.get("content", "")
+        title = content[:100]
+        if len(content) > 100:
             title += "..."
         
-        content = note_data.get("content", "")
         summary = note_data.get("summary", "") or ""
         
-        # Split content into chunks of 2000 chars (Notion limit)
-        content_chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
-        
+        # Only use the title property (which every database has)
         properties = {
-            "Name": {"title": [{"text": {"content": title}}]},
-            "Content": {"rich_text": [{"text": {"content": chunk}} for chunk in content_chunks[:100]]},  # Max 100 items
-            "Summary": {"rich_text": [{"text": {"content": summary[:2000]}}] if summary else []},
-            "Source": {"select": {"name": note_data.get("source", "text")}},
-            "FixNote ID": {"rich_text": [{"text": {"content": str(note_data.get("id", ""))}}]},
-            "Created": {"date": {"start": note_data.get("created_at", datetime.utcnow().isoformat())}},
-            "Last Synced": {"date": {"start": datetime.utcnow().isoformat()}},
+            title_property_name: {"title": [{"text": {"content": title}}]},
         }
+        
+        # Build page body with content blocks
+        children = []
+        
+        # Add summary as callout if exists
+        if summary:
+            children.append({
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "rich_text": [{"type": "text", "text": {"content": summary[:2000]}}],
+                    "icon": {"emoji": "📝"},
+                    "color": "blue_background"
+                }
+            })
+        
+        # Add content as paragraphs (split by newlines and Notion's 2000 char limit)
+        paragraphs = content.split('\n')
+        for para in paragraphs:
+            if para.strip():
+                # Split long paragraphs into chunks
+                chunks = [para[i:i+2000] for i in range(0, len(para), 2000)]
+                for chunk in chunks:
+                    children.append({
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [{"type": "text", "text": {"content": chunk}}]
+                        }
+                    })
+        
+        # Add metadata as divider + small text
+        children.append({"object": "block", "type": "divider", "divider": {}})
+        meta_text = f"📱 FixNote | Source: {note_data.get('source', 'text')} | ID: {note_data.get('id', '')}"
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": meta_text}, "annotations": {"color": "gray"}}]
+            }
+        })
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -145,6 +188,7 @@ class NotionClient:
                 json={
                     "parent": {"database_id": database_id},
                     "properties": properties,
+                    "children": children[:100],  # Notion limit: 100 blocks per request
                 },
             )
             response.raise_for_status()
@@ -152,28 +196,97 @@ class NotionClient:
     
     async def update_page(self, page_id: str, note_data: dict) -> dict:
         """Update an existing page."""
-        title = note_data.get("content", "")[:100]
-        if len(note_data.get("content", "")) > 100:
-            title += "..."
+        # Get page to find title property name
+        page_info = await self.get_page(page_id)
+        title_property_name = "Name"  # Default
+        
+        # Find the title property
+        for prop_name, prop_info in page_info.get("properties", {}).items():
+            if prop_info.get("type") == "title":
+                title_property_name = prop_name
+                break
         
         content = note_data.get("content", "")
-        summary = note_data.get("summary", "") or ""
-        content_chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
+        title = content[:100]
+        if len(content) > 100:
+            title += "..."
         
+        # Update only the title property
         properties = {
-            "Name": {"title": [{"text": {"content": title}}]},
-            "Content": {"rich_text": [{"text": {"content": chunk}} for chunk in content_chunks[:100]]},
-            "Summary": {"rich_text": [{"text": {"content": summary[:2000]}}] if summary else []},
-            "Last Synced": {"date": {"start": datetime.utcnow().isoformat()}},
+            title_property_name: {"title": [{"text": {"content": title}}]},
         }
         
         async with httpx.AsyncClient() as client:
+            # Update properties
             response = await client.patch(
                 f"{self.BASE_URL}/pages/{page_id}",
                 headers=self.headers,
                 json={"properties": properties},
             )
             response.raise_for_status()
+            
+            # Delete old blocks and add new ones
+            # First get all children
+            children_response = await client.get(
+                f"{self.BASE_URL}/blocks/{page_id}/children",
+                headers=self.headers,
+            )
+            children_response.raise_for_status()
+            old_children = children_response.json().get("results", [])
+            
+            # Delete old blocks
+            for block in old_children:
+                await client.delete(
+                    f"{self.BASE_URL}/blocks/{block['id']}",
+                    headers=self.headers,
+                )
+            
+            # Add new content blocks
+            summary = note_data.get("summary", "") or ""
+            new_children = []
+            
+            if summary:
+                new_children.append({
+                    "object": "block",
+                    "type": "callout",
+                    "callout": {
+                        "rich_text": [{"type": "text", "text": {"content": summary[:2000]}}],
+                        "icon": {"emoji": "📝"},
+                        "color": "blue_background"
+                    }
+                })
+            
+            paragraphs = content.split('\n')
+            for para in paragraphs:
+                if para.strip():
+                    chunks = [para[i:i+2000] for i in range(0, len(para), 2000)]
+                    for chunk in chunks:
+                        new_children.append({
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [{"type": "text", "text": {"content": chunk}}]
+                            }
+                        })
+            
+            new_children.append({"object": "block", "type": "divider", "divider": {}})
+            meta_text = f"📱 FixNote | Source: {note_data.get('source', 'text')} | ID: {note_data.get('id', '')} | Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+            new_children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": meta_text}, "annotations": {"color": "gray"}}]
+                }
+            })
+            
+            # Append new children
+            if new_children:
+                await client.patch(
+                    f"{self.BASE_URL}/blocks/{page_id}/children",
+                    headers=self.headers,
+                    json={"children": new_children[:100]},
+                )
+            
             return response.json()
     
     async def get_page(self, page_id: str) -> dict:
