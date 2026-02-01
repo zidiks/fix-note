@@ -186,9 +186,9 @@ input, textarea {
     to bottom,
     var(--bg-primary) 0%,
     var(--bg-primary) 52%, /* Solid through header area */
-    rgba(242, 242, 247, 0.7) 65%,
-    rgba(242, 242, 247, 0.3) 80%,
-    rgba(242, 242, 247, 0) 100%
+    var(--bg-primary) 52% 65%,
+    var(--bg-primary) 52% 80%,
+    var(--bg-primary) 52% 100%
   );
   pointer-events: none;
   z-index: 35; /* Below header content (z-40) but above list */

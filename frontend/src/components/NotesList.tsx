@@ -97,6 +97,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                       summary: result.summary,
                       source: result.source || 'text',
                       duration_seconds: result.duration_seconds,
+                      images: result.images || null,
                       created_at: result.created_at,
                       updated_at: result.created_at,
                     })
