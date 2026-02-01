@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from collections import defaultdict
+from typing import List, Optional
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
@@ -12,7 +13,8 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
     PreCheckoutQuery,
-    LabeledPrice
+    LabeledPrice,
+    PhotoSize
 )
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
@@ -41,6 +43,29 @@ rag_service = RAGService()
 # Buffer for collecting forwarded messages (user_id -> list of messages)
 forwarded_messages_buffer: dict[int, list[Message]] = defaultdict(list)
 forwarded_messages_tasks: dict[int, asyncio.Task] = {}
+
+# Buffer for collecting media group messages (media_group_id -> list of messages)
+media_group_buffer: dict[str, list[Message]] = defaultdict(list)
+media_group_tasks: dict[str, asyncio.Task] = {}
+
+
+async def get_telegram_file_url(file_id: str) -> Optional[str]:
+    """Get permanent Telegram file URL from file_id."""
+    try:
+        file = await bot.get_file(file_id)
+        if file.file_path:
+            return f"https://api.telegram.org/file/bot{settings.telegram_bot_token}/{file.file_path}"
+    except Exception as e:
+        logger.error(f"Failed to get file URL: {e}")
+    return None
+
+
+async def get_largest_photo(photos: List[PhotoSize]) -> Optional[PhotoSize]:
+    """Get the largest photo from a list of photo sizes."""
+    if not photos:
+        return None
+    # Photos are sorted by size ascending, so last one is largest
+    return max(photos, key=lambda p: p.width * p.height)
 
 
 def get_notes_inline_keyboard() -> InlineKeyboardMarkup:
@@ -484,23 +509,39 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
         first_name=first_msg.from_user.first_name
     )
     
-    # Combine all message texts
+    # Combine all message texts and collect images
     combined_texts = []
+    image_urls = []
+    
     for msg in messages:
+        # Handle text
         if msg.text:
             combined_texts.append(msg.text.strip())
+        elif msg.caption:
+            combined_texts.append(msg.caption.strip())
+        
+        # Handle photos
+        if msg.photo:
+            largest = await get_largest_photo(msg.photo)
+            if largest:
+                url = await get_telegram_file_url(largest.file_id)
+                if url:
+                    image_urls.append(url)
     
-    if not combined_texts:
+    # Need either text or images
+    if not combined_texts and not image_urls:
         return
     
-    combined_text = "\n\n".join(combined_texts)
+    combined_text = "\n\n".join(combined_texts) if combined_texts else "📷 Изображения без текста"
+    source = "photo" if image_urls else "text"
     
     # Save as single note
     note = await notes_service.create_note(
         user_id=user.id,
         note_data=NoteCreate(
             content=combined_text,
-            source="text"
+            source=source,
+            images=image_urls
         )
     )
     
@@ -509,9 +550,68 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
     
     # Send confirmation
     msg_count = len(messages)
+    photo_text = f" с {len(image_urls)} фото" if image_urls else ""
     await bot.send_message(
         chat_id,
-        f"✅ {msg_count} сообщений сохранено как 1 заметка!"
+        f"✅ {msg_count} сообщений{photo_text} сохранено как 1 заметка!"
+    )
+
+
+async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
+    """Process media group (multiple photos sent together) after delay."""
+    await asyncio.sleep(0.8)  # Wait for all media group messages
+    
+    messages = media_group_buffer.pop(media_group_id, [])
+    media_group_tasks.pop(media_group_id, None)
+    
+    if not messages:
+        return
+    
+    # Get user
+    first_msg = messages[0]
+    user = await notes_service.get_or_create_user(
+        telegram_id=user_id,
+        username=first_msg.from_user.username,
+        first_name=first_msg.from_user.first_name
+    )
+    
+    # Collect all images and captions
+    image_urls = []
+    captions = []
+    
+    for msg in messages:
+        if msg.caption:
+            captions.append(msg.caption.strip())
+        
+        if msg.photo:
+            largest = await get_largest_photo(msg.photo)
+            if largest:
+                url = await get_telegram_file_url(largest.file_id)
+                if url:
+                    image_urls.append(url)
+    
+    if not image_urls:
+        return
+    
+    # Combine captions or use default text
+    content = "\n\n".join(captions) if captions else f"📷 {len(image_urls)} изображений"
+    
+    # Save note
+    note = await notes_service.create_note(
+        user_id=user.id,
+        note_data=NoteCreate(
+            content=content,
+            source="photo",
+            images=image_urls
+        )
+    )
+    
+    # Index for RAG
+    await rag_service.index_note(str(note.id), content)
+    
+    await bot.send_message(
+        chat_id,
+        f"✅ Сохранено {len(image_urls)} фото как заметка!"
     )
 
 
@@ -522,7 +622,7 @@ async def handle_text(message: Message):
         return
     
     # Skip commands
-    if message.text.startswith("/"):
+    if message.text and message.text.startswith("/"):
         return
     
     user_id = message.from_user.id
@@ -614,6 +714,92 @@ async def save_text_note(message: Message, user, text: str):
     await rag_service.index_note(str(note.id), text)
     
     await message.answer("✅ Заметка сохранена!")
+
+
+@router.message(F.photo)
+async def handle_photo(message: Message):
+    """Handle photo message - save as note with image."""
+    if not check_user_allowed(message.from_user.id):
+        return
+    
+    user_id = message.from_user.id
+    
+    # Check if this is part of a media group
+    if message.media_group_id:
+        # Check if forwarded
+        if message.forward_date:
+            # Treat as forwarded message
+            forwarded_messages_buffer[user_id].append(message)
+            
+            if user_id in forwarded_messages_tasks:
+                forwarded_messages_tasks[user_id].cancel()
+            
+            task = asyncio.create_task(
+                process_forwarded_messages(user_id, message.chat.id)
+            )
+            forwarded_messages_tasks[user_id] = task
+        else:
+            # Regular media group
+            media_group_buffer[message.media_group_id].append(message)
+            
+            if message.media_group_id in media_group_tasks:
+                media_group_tasks[message.media_group_id].cancel()
+            
+            task = asyncio.create_task(
+                process_media_group(message.media_group_id, user_id, message.chat.id)
+            )
+            media_group_tasks[message.media_group_id] = task
+        return
+    
+    # Check if forwarded single photo
+    if message.forward_date:
+        forwarded_messages_buffer[user_id].append(message)
+        
+        if user_id in forwarded_messages_tasks:
+            forwarded_messages_tasks[user_id].cancel()
+        
+        task = asyncio.create_task(
+            process_forwarded_messages(user_id, message.chat.id)
+        )
+        forwarded_messages_tasks[user_id] = task
+        return
+    
+    # Single photo - process immediately
+    user = await notes_service.get_or_create_user(
+        telegram_id=user_id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name
+    )
+    
+    # Get largest photo
+    largest = await get_largest_photo(message.photo)
+    if not largest:
+        await message.answer("❌ Не удалось обработать изображение")
+        return
+    
+    # Get file URL
+    url = await get_telegram_file_url(largest.file_id)
+    if not url:
+        await message.answer("❌ Не удалось получить URL изображения")
+        return
+    
+    # Get caption or use default
+    content = message.caption.strip() if message.caption else "📷 Изображение"
+    
+    # Save note
+    note = await notes_service.create_note(
+        user_id=user.id,
+        note_data=NoteCreate(
+            content=content,
+            source="photo",
+            images=[url]
+        )
+    )
+    
+    # Index for RAG
+    await rag_service.index_note(str(note.id), content)
+    
+    await message.answer("✅ Фото сохранено как заметка!")
 
 
 # Payment handlers for Telegram Stars

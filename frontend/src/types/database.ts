@@ -17,6 +17,7 @@ export type Database = {
           duration_seconds: number | null
           embedding: string | null
           id: string
+          images: string[] | null
           source: string | null
           summary: string | null
           updated_at: string | null
@@ -28,6 +29,7 @@ export type Database = {
           duration_seconds?: number | null
           embedding?: string | null
           id?: string
+          images?: string[] | null
           source?: string | null
           summary?: string | null
           updated_at?: string | null
@@ -39,6 +41,7 @@ export type Database = {
           duration_seconds?: number | null
           embedding?: string | null
           id?: string
+          images?: string[] | null
           source?: string | null
           summary?: string | null
           updated_at?: string | null

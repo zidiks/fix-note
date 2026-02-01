@@ -24,8 +24,9 @@ export interface Note {
   user_id: string
   content: string
   summary: string | null
-  source: 'voice' | 'text'
+  source: 'voice' | 'text' | 'photo'
   duration_seconds: number | null
+  images: string[] | null
   created_at: string
   updated_at: string
 }
@@ -54,8 +55,9 @@ export interface FTSSearchResult {
   id: string
   content: string
   summary: string | null
-  source: 'voice' | 'text'
+  source: 'voice' | 'text' | 'photo'
   duration_seconds: number | null
+  images: string[] | null
   created_at: string
   rank: number
 }
@@ -71,8 +73,9 @@ export interface SharedNoteResponse {
     id: string
     content: string
     summary: string | null
-    source: 'voice' | 'text'
+    source: 'voice' | 'text' | 'photo'
     duration_seconds: number | null
+    images: string[] | null
     created_at: string
   }
   is_owner: boolean

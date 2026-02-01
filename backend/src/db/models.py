@@ -38,8 +38,9 @@ class Note(BaseModel):
     user_id: UUID
     content: str
     summary: Optional[str] = None
-    source: str = "text"  # 'voice' | 'text'
+    source: str = "text"  # 'voice' | 'text' | 'photo'
     duration_seconds: Optional[int] = None
+    images: List[str] = []  # Array of image URLs
     share_token: Optional[str] = None
     is_public: bool = False
     created_at: datetime
@@ -53,6 +54,7 @@ class PublicNote(BaseModel):
     summary: Optional[str] = None
     source: str = "text"
     duration_seconds: Optional[int] = None
+    images: List[str] = []
     created_at: datetime
 
 
@@ -62,6 +64,7 @@ class NoteCreate(BaseModel):
     summary: Optional[str] = None
     source: str = "text"
     duration_seconds: Optional[int] = None
+    images: List[str] = []
 
 
 class NoteUpdate(BaseModel):
@@ -92,6 +95,7 @@ class FTSSearchResult(BaseModel):
     summary: Optional[str] = None
     source: str = "text"
     duration_seconds: Optional[int] = None
+    images: List[str] = []
     created_at: datetime
     rank: float
 

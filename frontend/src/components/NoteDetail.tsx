@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -7,6 +7,219 @@ import { Note, api } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
 import { useSubscription } from '../stores/subscription'
 import { useI18n } from '../i18n'
+
+// URL regex pattern
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi
+
+// Extract URLs from text
+const extractUrls = (text: string): string[] => {
+  const matches = text.match(URL_REGEX)
+  if (!matches) return []
+  // Remove duplicates and clean trailing punctuation
+  return [...new Set(matches.map(url => url.replace(/[.,;:!?)]+$/, '')))]
+}
+
+// Get domain from URL
+const getDomain = (url: string): string => {
+  try {
+    const domain = new URL(url).hostname.replace('www.', '')
+    return domain
+  } catch {
+    return url
+  }
+}
+
+// Get favicon URL for a domain
+const getFaviconUrl = (url: string): string => {
+  const domain = getDomain(url)
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+}
+
+// Link preview component
+const LinkPreview = ({ url, onClick }: { url: string; onClick: () => void }) => {
+  const domain = getDomain(url)
+  const displayUrl = url.length > 50 ? url.substring(0, 50) + '...' : url
+  
+  return (
+    <motion.a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => {
+        e.preventDefault()
+        onClick()
+        window.open(url, '_blank', 'noopener,noreferrer')
+      }}
+      className="flex items-center gap-3 p-3 rounded-xl transition-all"
+      style={{ 
+        backgroundColor: 'var(--bg-secondary)',
+        border: '1px solid var(--separator)'
+      }}
+      whileTap={{ scale: 0.98 }}
+    >
+      <img 
+        src={getFaviconUrl(url)} 
+        alt="" 
+        className="w-6 h-6 rounded"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = 'none'
+        }}
+      />
+      <div className="flex-1 min-w-0">
+        <p 
+          className="text-sm font-medium truncate"
+          style={{ color: 'var(--accent)' }}
+        >
+          {domain}
+        </p>
+        <p 
+          className="text-xs truncate"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          {displayUrl}
+        </p>
+      </div>
+      <svg 
+        width="16" 
+        height="16" 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2"
+        style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}
+      >
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
+      </svg>
+    </motion.a>
+  )
+}
+
+// Image gallery component
+const ImageGallery = ({ images }: { images: string[] }) => {
+  const [selectedImage, setSelectedImage] = useState<number | null>(null)
+  
+  if (!images || images.length === 0) return null
+  
+  const gridCols = images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+  
+  return (
+    <>
+      {/* Gallery grid */}
+      <div className={`grid ${gridCols} gap-2 mb-6`}>
+        {images.map((img, index) => (
+          <motion.div
+            key={index}
+            className="relative aspect-square rounded-xl overflow-hidden cursor-pointer"
+            style={{ backgroundColor: 'var(--bg-secondary)' }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setSelectedImage(index)}
+          >
+            <img
+              src={img}
+              alt={`Image ${index + 1}`}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </motion.div>
+        ))}
+      </div>
+      
+      {/* Lightbox */}
+      <AnimatePresence>
+        {selectedImage !== null && (
+          <motion.div
+            className="fixed inset-0 z-[300] flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedImage(null)}
+          >
+            {/* Backdrop */}
+            <motion.div
+              className="absolute inset-0 bg-black/90"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+            
+            {/* Image */}
+            <motion.img
+              src={images[selectedImage]}
+              alt=""
+              className="relative max-w-[90vw] max-h-[80vh] object-contain rounded-lg"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            />
+            
+            {/* Close button */}
+            <motion.button
+              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+              onClick={() => setSelectedImage(null)}
+              whileTap={{ scale: 0.9 }}
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </motion.button>
+            
+            {/* Navigation arrows */}
+            {images.length > 1 && (
+              <>
+                {selectedImage > 0 && (
+                  <motion.button
+                    className="absolute left-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedImage(prev => (prev !== null ? prev - 1 : 0))
+                    }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                  </motion.button>
+                )}
+                {selectedImage < images.length - 1 && (
+                  <motion.button
+                    className="absolute right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedImage(prev => (prev !== null ? prev + 1 : 0))
+                    }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </motion.button>
+                )}
+              </>
+            )}
+            
+            {/* Image counter */}
+            {images.length > 1 && (
+              <motion.div
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-medium"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+              >
+                {selectedImage + 1} / {images.length}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
 
 // Toast notification component
 const SyncToast = ({ message, type, onClose }: { 
@@ -88,7 +301,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const canSync = subscription?.limits.sync_enabled ?? false
 
   const isVoice = note.source === 'voice'
-  const icon = isVoice ? '🎤' : '📝'
+  const hasImages = note.images && note.images.length > 0
+  const icon = hasImages ? '🖼️' : isVoice ? '🎤' : '📝'
+  
+  // Extract URLs from content
+  const urls = useMemo(() => extractUrls(note.content), [note.content])
 
   const date = new Date(note.created_at)
   const formattedDate = format(date, "d MMMM yyyy 'в' HH:mm", { locale: ru })
@@ -339,12 +556,17 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             : 'calc(100px + env(safe-area-inset-bottom, 0px))' 
         }}
       >
+        {/* Images gallery - show at the top if there are images */}
+        {hasImages && !isEditing && (
+          <ImageGallery images={note.images!} />
+        )}
+
         {/* Meta info */}
         <div className="flex items-center gap-3 mb-4">
           <span className="text-3xl">{icon}</span>
           <div>
-            <span className={`badge ${isVoice ? 'badge-voice' : 'badge-text'}`}>
-              {isVoice ? 'Голосовая заметка' : 'Текстовая заметка'}
+            <span className={`badge ${isVoice ? 'badge-voice' : hasImages ? 'badge-voice' : 'badge-text'}`}>
+              {hasImages ? 'С изображениями' : isVoice ? 'Голосовая заметка' : 'Текстовая заметка'}
             </span>
             {isVoice && note.duration_seconds && (
               <span
@@ -352,6 +574,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                 style={{ color: 'var(--text-secondary)' }}
               >
                 {formatDuration(note.duration_seconds)}
+              </span>
+            )}
+            {hasImages && (
+              <span
+                className="text-sm ml-2"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {note.images!.length} фото
               </span>
             )}
           </div>
@@ -438,6 +668,27 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             )}
           </div>
         </div>
+
+        {/* Link previews */}
+        {urls.length > 0 && !isEditing && (
+          <div className="mt-6">
+            <h3
+              className="text-xs font-semibold uppercase mb-2"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Ссылки ({urls.length})
+            </h3>
+            <div className="space-y-2">
+              {urls.map((url, index) => (
+                <LinkPreview 
+                  key={index} 
+                  url={url} 
+                  onClick={() => hapticImpact('light')}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom fade gradient */}

@@ -73,7 +73,8 @@ class NotesService:
             "content": note_data.content,
             "summary": note_data.summary,
             "source": note_data.source,
-            "duration_seconds": note_data.duration_seconds
+            "duration_seconds": note_data.duration_seconds,
+            "images": note_data.images if note_data.images else []
         }
         result = self.client.table("notes").insert(data).execute()
         return Note(**result.data[0])

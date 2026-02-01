@@ -87,6 +87,10 @@ body {
   -ms-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
+  /* Fix long URLs breaking layout */
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
 /* Also allow selection in input fields */
@@ -723,12 +727,21 @@ input, textarea {
   color: var(--success);
 }
 
+.badge-photo {
+  background-color: rgba(255, 149, 0, 0.1);
+  color: var(--warning);
+}
+
 .dark .badge-voice {
   background-color: rgba(0, 122, 255, 0.2);
 }
 
 .dark .badge-text {
   background-color: rgba(52, 199, 89, 0.2);
+}
+
+.dark .badge-photo {
+  background-color: rgba(255, 149, 0, 0.2);
 }
 
 /* Loading spinner */
