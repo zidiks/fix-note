@@ -330,7 +330,7 @@ function App() {
 
             {/* Content - with top padding for fixed header and bottom padding for search bar */}
             <main 
-              className="pt-[52px] pb-24 safe-area-bottom overflow-y-auto"
+              className="pt-[52px] pb-24 safe-area-bottom overflow-y-auto hide-scrollbar"
               style={{ 
                 height: '100%',
                 maxHeight: '100%'

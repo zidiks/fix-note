@@ -550,7 +550,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       {/* Content */}
       <main
-        className="px-4 pt-4 safe-area-top"
+        className="px-4 pt-4 safe-area-top hide-scrollbar overflow-y-auto"
         style={{
           paddingBottom: isEditing && keyboardHeight > 0
             ? keyboardHeight + 80

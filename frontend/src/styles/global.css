@@ -111,8 +111,21 @@ input, textarea {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* iOS-style scrollbar */
+/* iOS-style scrollbar - hide scrollbar but keep functionality */
 ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Hide scrollbar class - works across all browsers */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
   width: 0;
   height: 0;
 }
