@@ -9,3 +9,4 @@ CREATE INDEX IF NOT EXISTS idx_notes_has_images ON notes((array_length(images, 1
 -- Comment for documentation
 COMMENT ON COLUMN notes.images IS 'Array of image URLs attached to the note';
 
+

@@ -74,10 +74,23 @@ class NotesService:
             "summary": note_data.summary,
             "source": note_data.source,
             "duration_seconds": note_data.duration_seconds,
-            "images": note_data.images if note_data.images else []
         }
-        result = self.client.table("notes").insert(data).execute()
-        return Note(**result.data[0])
+        # Only include images if provided and not empty
+        # This handles cases where the column might not exist yet
+        if note_data.images:
+            data["images"] = note_data.images
+        
+        try:
+            result = self.client.table("notes").insert(data).execute()
+            return Note(**result.data[0])
+        except Exception as e:
+            # If error is about missing images column, retry without it
+            if "images" in str(e).lower() and "column" in str(e).lower():
+                logger.warning(f"Images column not found, retrying without images: {e}")
+                data.pop("images", None)
+                result = self.client.table("notes").insert(data).execute()
+                return Note(**result.data[0])
+            raise
     
     async def get_note(self, note_id: UUID, user_id: UUID) -> Optional[Note]:
         """Get a single note by ID."""
