@@ -293,6 +293,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [editedContent, setEditedContent] = useState(note.content)
   const [editedSummary, setEditedSummary] = useState(note.summary || '')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const [viewportOffset, setViewportOffset] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -325,25 +326,35 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     const handleResize = () => {
       const windowHeight = window.innerHeight
       const viewportHeight = viewport.height
-      const newKeyboardHeight = windowHeight - viewportHeight - viewport.offsetTop
+      const offsetTop = viewport.offsetTop
+      const newKeyboardHeight = windowHeight - viewportHeight - offsetTop
 
       if (newKeyboardHeight > 100) {
         setKeyboardHeight(newKeyboardHeight)
+        // Calculate viewport offset to keep action bar above keyboard
+        // When viewport scrolls, we need to account for the offset
+        setViewportOffset(offsetTop)
         document.body.style.height = `${viewportHeight}px`
         document.body.style.overflow = 'hidden'
       } else {
         setKeyboardHeight(0)
+        setViewportOffset(0)
         document.body.style.height = ''
         document.body.style.overflow = ''
       }
     }
 
+    const handleScroll = () => {
+      // Update on scroll to keep action bar in correct position
+      handleResize()
+    }
+
     viewport.addEventListener('resize', handleResize)
-    viewport.addEventListener('scroll', handleResize)
+    viewport.addEventListener('scroll', handleScroll)
 
     return () => {
       viewport.removeEventListener('resize', handleResize)
-      viewport.removeEventListener('scroll', handleResize)
+      viewport.removeEventListener('scroll', handleScroll)
       document.body.style.height = ''
       document.body.style.overflow = ''
     }
@@ -709,17 +720,22 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       {/* Floating action bar */}
       <motion.div
-        className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center bottom-[calc(12px+env(safe-area-inset-bottom,0px))]"
+        className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center"
         initial={{ opacity: 0, y: 20 }}
         animate={{
           opacity: 1,
-          y: 0,
-          bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
+          y: viewportOffset > 0 ? -viewportOffset : 0
         }}
         transition={{
           delay: 0.15,
           duration: 0.25,
           ease: [0.25, 0.46, 0.45, 0.94]
+        }}
+        style={{
+          position: 'fixed',
+          bottom: keyboardHeight > 0 
+            ? `${keyboardHeight + 12}px` 
+            : `calc(12px + env(safe-area-inset-bottom, 0px))`
         }}
       >
         <motion.div
