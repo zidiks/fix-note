@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { useTelegram } from './hooks/useTelegram'
+import { useTelegramTheme } from './hooks/useTelegramTheme'
 import { NotesList } from './components/NotesList'
 import { NoteDetail } from './components/NoteDetail'
 import { SharedNoteView } from './components/SharedNoteView'
@@ -80,13 +81,8 @@ function App() {
     }
   }, [ready, expand, disableVerticalSwipes, startParam, fetchSubscription, user, setLanguage])
 
-  // Set header and background color explicitly to prevent color change on scroll
-  useEffect(() => {
-    // Use explicit color from themeParams or default
-    const bgColor = themeParams?.bg_color || (colorScheme === 'dark' ? '#000000' : '#F2F2F7')
-    setHeaderColor(bgColor)
-    setBackgroundColor(bgColor)
-  }, [themeParams, colorScheme, setHeaderColor, setBackgroundColor])
+  // Use Telegram theme hook to manage header and background colors based on view state
+  useTelegramTheme(viewState)
 
   // Handle Telegram BackButton
   const handleBack = useCallback(() => {

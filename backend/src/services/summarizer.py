@@ -21,11 +21,24 @@ SUMMARY_SYSTEM_PROMPT = """Ты — AI-ассистент для создани�
 """
 
 TITLE_AND_SUMMARY_SYSTEM_PROMPT = """Ты — AI-ассистент для заметок. Твоя задача — по тексту заметки выдать:
-1. title — короткий заголовок в формате "Тип: Краткое описание" (например: "Feature idea: Quick Capture", "Meeting notes: Product Planning", "Task: Fix bug", "Note: Daily thoughts"). Одна строка, до 60 символов. Без кавычек и точки в конце.
+1. title — короткий заголовок в формате "Тип: Краткое описание". Одна строка, до 60 символов. Без кавычек и точки в конце.
 2. summary — структурированное содержание заметки, близкое к оригиналу. Сохраняй структуру оригинала (списки остаются списками, абзацы остаются абзацами). Суммаризируй только избыточные части, но сохраняй ключевые детали и факты. Если текст короткий, можно повторить или слегка переформулировать. Если текст содержит список, сохрани список, но структурируй и слегка суммаризируй пункты.
 
-Ответь строго в формате JSON, один объект с полями "title" и "summary". Пример: {"title": "Feature idea: Quick Capture", "summary": "Идея функции для быстрого захвата заметок:\n- Голосовой ввод\n- Автоматическая суммаризация\n- Интеграция с календарем"}
-Язык title и summary — тот же, что и в тексте.
+КРИТИЧЕСКИ ВАЖНО: 
+- Определи язык текста заметки (русский, английский, или другой)
+- Заголовок (title) и саммари (summary) ОБЯЗАТЕЛЬНО должны быть на том же языке, что и текст заметки
+- Если текст на русском — title и summary на русском
+- Если текст на английском — title и summary на английском
+- Если текст смешанный, используй преобладающий язык
+- НИКОГДА не переводи заголовок на другой язык
+
+Примеры для русского текста:
+{"title": "Идея функции: Быстрый захват", "summary": "Идея функции для быстрого захвата заметок:\n- Голосовой ввод\n- Автоматическая суммаризация\n- Интеграция с календарем"}
+
+Примеры для английского текста:
+{"title": "Feature idea: Quick Capture", "summary": "Feature idea for quick note capture:\n- Voice input\n- Automatic summarization\n- Calendar integration"}
+
+Ответь строго в формате JSON, один объект с полями "title" и "summary".
 """
 
 RAG_SYSTEM_PROMPT = """Ты — AI-ассистент, который отвечает на вопросы пользователя на основе его заметок.
@@ -83,12 +96,13 @@ class SummarizerService:
             logger.error(f"Summarization error: {e}")
             return None
 
-    async def summarize_with_title(self, text: str) -> Tuple[Optional[str], Optional[str]]:
+    async def summarize_with_title(self, text: str, language: str = "ru") -> Tuple[Optional[str], Optional[str]]:
         """
         Create a title and summary for the text in one API call.
 
         Args:
             text: Text to process (note content)
+            language: Language code (e.g., "ru", "en") to help determine output language
 
         Returns:
             Tuple of (title, summary). Either or both may be None if failed or text too short.
@@ -96,12 +110,23 @@ class SummarizerService:
         if not text or len(text.strip()) < 10:
             return None, None
 
+        # Determine language hint based on language code
+        # But also analyze the text to detect its actual language
+        lang_hint = "русском" if language.startswith("ru") else "английском" if language.startswith("en") else "том же языке, что и текст"
+        
+        # Add explicit instruction about language matching
+        user_prompt = f"""Текст заметки:
+
+{text[:8000]}
+
+ВАЖНО: Определи язык этого текста и создай заголовок (title) и саммари (summary) строго на том же языке, что и текст. Если текст на русском — ответь на русском. Если текст на английском — ответь на английском."""
+        
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": TITLE_AND_SUMMARY_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Текст заметки:\n\n{text[:8000]}"}
+                    {"role": "user", "content": user_prompt}
                 ],
                 max_tokens=1200,  # Увеличено для более подробных суммаризаций
                 temperature=0.3

@@ -448,7 +448,7 @@ async def handle_voice(message: Message):
         title, summary = None, None
         if can_summarize:
             await status_msg.edit_text("✨ Создаю заголовок и саммари...")
-            title, summary = await summarizer_service.summarize_with_title(transcription)
+            title, summary = await summarizer_service.summarize_with_title(transcription, user.language_code)
             if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
         
@@ -539,7 +539,7 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
     title, summary = None, None
     can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
     if can_summarize and len(combined_text.strip()) >= 10:
-        title, summary = await summarizer_service.summarize_with_title(combined_text)
+        title, summary = await summarizer_service.summarize_with_title(combined_text, user.language_code)
         if title or summary:
             await notes_service.increment_usage(user.id, "summaries", 1)
 
@@ -610,7 +610,7 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
     title, summary = None, None
     can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
     if can_summarize and len(content.strip()) >= 10:
-        title, summary = await summarizer_service.summarize_with_title(content)
+        title, summary = await summarizer_service.summarize_with_title(content, user.language_code)
         if title or summary:
             await notes_service.increment_usage(user.id, "summaries", 1)
 
@@ -725,7 +725,7 @@ async def save_text_note(message: Message, user, text: str):
     title, summary = None, None
     can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
     if can_summarize and len(text.strip()) >= 10:
-        title, summary = await summarizer_service.summarize_with_title(text)
+        title, summary = await summarizer_service.summarize_with_title(text, user.language_code)
         if title or summary:
             await notes_service.increment_usage(user.id, "summaries", 1)
 

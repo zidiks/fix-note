@@ -295,7 +295,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         )}
 
         {/* Date */}
-        <p className="text-base font-medium mb-6 text-[var(--text-secondary)] px-5">
+        <p className="text-base font-medium mb-5 text-[var(--text-secondary)] px-5">
           {formattedDate}
         </p>
 
