@@ -55,3 +55,4 @@ export const NoteTabs = ({ activeTab, onTabChange, hasSummary }: NoteTabsProps) 
   )
 }
 
+

@@ -172,24 +172,25 @@ function App() {
   useEffect(() => {
     const isDarkMode = colorScheme === 'dark'
 
+    // Apply dark/light class based on colorScheme
     if (isDarkMode) {
       document.documentElement.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
     }
 
+    // Only set Telegram-specific theme variables, not our app's CSS variables
+    // Our app's CSS variables (--bg-primary, --bg-secondary, etc.) should come from CSS
+    // based on the .dark class, not from Telegram themeParams which can be inconsistent
     if (themeParams) {
       if (themeParams.bg_color) {
         document.documentElement.style.setProperty('--tg-theme-bg-color', themeParams.bg_color)
-        document.documentElement.style.setProperty('--bg-primary', themeParams.bg_color)
       }
       if (themeParams.text_color) {
         document.documentElement.style.setProperty('--tg-theme-text-color', themeParams.text_color)
-        document.documentElement.style.setProperty('--text-primary', themeParams.text_color)
       }
       if (themeParams.hint_color) {
         document.documentElement.style.setProperty('--tg-theme-hint-color', themeParams.hint_color)
-        document.documentElement.style.setProperty('--text-secondary', themeParams.hint_color)
       }
       if (themeParams.link_color) {
         document.documentElement.style.setProperty('--tg-theme-link-color', themeParams.link_color)
@@ -200,7 +201,6 @@ function App() {
       }
       if (themeParams.secondary_bg_color) {
         document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color)
-        document.documentElement.style.setProperty('--bg-secondary', themeParams.secondary_bg_color)
       }
     }
   }, [colorScheme, themeParams])

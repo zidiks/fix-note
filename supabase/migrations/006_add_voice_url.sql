@@ -9,3 +9,4 @@ CREATE INDEX IF NOT EXISTS idx_notes_has_voice ON notes(voice_url) WHERE voice_u
 -- Comment for documentation
 COMMENT ON COLUMN notes.voice_url IS 'URL of the voice file for voice notes';
 
+
