@@ -31,8 +31,6 @@ function App() {
     hideBackButton,
     close,
     user,
-    setHeaderColor,
-    setBackgroundColor,
     hapticImpact
   } = useTelegram()
 
