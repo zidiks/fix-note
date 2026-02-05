@@ -3,7 +3,6 @@ import { enUS, ru } from 'date-fns/locale'
 import { Note } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
 import { useI18n } from '../i18n'
-import { Badge } from './ui/Badge'
 
 interface NoteCardProps {
   note: Note
@@ -15,10 +14,6 @@ interface NoteCardProps {
 export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => {
   const { hapticImpact } = useTelegram()
   const { language } = useI18n()
-
-  // Check if has images
-  const hasImages = note.images && note.images.length > 0
-  const imageCount = note.images?.length || 0
 
   // Get title - AI-generated title, or first line of summary/content
   const title = note.title?.trim() ||
@@ -62,16 +57,6 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
       <div className="p-4">
         {/* Title with image indicator */}
         <div className="flex items-center gap-2">
-          {hasImages && (
-            <Badge variant="voice" className="flex items-center gap-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-              {imageCount > 1 && imageCount}
-            </Badge>
-          )}
           <h3 className="font-semibold text-base leading-tight truncate flex-1 first-letter:uppercase text-[var(--text-primary)]">
             {title}
           </h3>
