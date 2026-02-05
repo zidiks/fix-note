@@ -3,6 +3,7 @@ import { enUS, ru } from 'date-fns/locale'
 import { Note } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
 import { useI18n } from '../i18n'
+import { Badge } from './ui/Badge'
 
 interface NoteCardProps {
   note: Note
@@ -48,66 +49,45 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
     onSelect?.(note)
   }
 
+  const borderRadiusClasses = `
+    ${isFirst ? 'rounded-t-xl' : ''}
+    ${isLast ? 'rounded-b-xl' : ''}
+  `.trim()
+
   return (
     <div
-      className="active:opacity-70 transition-opacity cursor-pointer"
+      className={`active:opacity-70 transition-opacity cursor-pointer bg-[var(--bg-secondary)] ${borderRadiusClasses}`}
       onClick={handleClick}
-      style={{
-        backgroundColor: 'var(--bg-secondary)',
-        borderTopLeftRadius: isFirst ? '8px' : 0,
-        borderTopRightRadius: isFirst ? '8px' : 0,
-        borderBottomLeftRadius: isLast ? '8px' : 0,
-        borderBottomRightRadius: isLast ? '8px' : 0,
-      }}
     >
       <div className="p-4">
         {/* Title with image indicator */}
         <div className="flex items-center gap-2">
           {hasImages && (
-            <span 
-              className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded"
-              style={{ 
-                backgroundColor: 'rgba(0, 122, 255, 0.1)',
-                color: 'var(--accent)'
-              }}
-            >
+            <Badge variant="voice" className="flex items-center gap-1">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                 <circle cx="8.5" cy="8.5" r="1.5"/>
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
               {imageCount > 1 && imageCount}
-            </span>
+            </Badge>
           )}
-          <h3
-            className="font-semibold text-base leading-tight truncate flex-1 first-letter:uppercase"
-            style={{ color: 'var(--text-primary)' }}
-          >
+          <h3 className="font-semibold text-base leading-tight truncate flex-1 first-letter:uppercase text-[var(--text-primary)]">
             {title}
           </h3>
-          <span
-            className="text-sm font-medium"
-            style={{ color: 'var(--text-primary)' }}
-          >
+          <span className="text-sm font-medium text-[var(--text-primary)]">
             {formattedDate}
           </span>
         </div>
 
         {/* Subtitle line */}
         <div className="flex items-center gap-2 mt-1.5">
-          {subtitle && (
-            <span
-              className="text-sm line-clamp-2 leading-4 flex-1 first-letter:uppercase"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+          {subtitle ? (
+            <span className="text-sm line-clamp-2 leading-4 flex-1 first-letter:uppercase text-[var(--text-secondary)]">
               {subtitle}
             </span>
-          )}
-          {!subtitle && (
-            <span
-              className="text-sm"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+          ) : (
+            <span className="text-sm text-[var(--text-secondary)]">
               No additional text
             </span>
           )}

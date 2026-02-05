@@ -18,15 +18,12 @@ export const DateGroup = ({ label, notes, groupIndex, onSelectNote }: DateGroupP
       className="mb-6"
     >
       {/* Section header - Apple Notes style */}
-      <h2 
-        className="text-[15px] font-medium px-4 mb-2 ml-4"
-        style={{ color: 'var(--text-secondary)' }}
-      >
+      <h2 className="text-[15px] font-medium px-4 mb-2 ml-4 text-[var(--text-secondary)]">
         {label}
       </h2>
 
       {/* Notes container */}
-      <div className="mx-4 overflow-hidden rounded-xl" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+      <div className="mx-4 overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
         {notes.map((note, index) => (
           <NoteCard
             key={note.id}

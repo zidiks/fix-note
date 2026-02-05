@@ -80,3 +80,4 @@ COMMENT ON FUNCTION search_notes IS 'Semantic search for notes using embeddings,
 COMMENT ON FUNCTION search_notes_fts IS 'Full-text search for notes using PostgreSQL FTS, excludes soft-deleted notes';
 
 
+

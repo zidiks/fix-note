@@ -35,25 +35,18 @@ export const LanguagePage = ({ onBack: _onBack }: LanguagePageProps) => {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 50 }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="min-h-screen"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
+      className="min-h-screen bg-[var(--bg-primary)]"
     >
       {/* Header */}
       <div className="px-4 pt-4 pb-6">
-        <h1 
-          className="text-2xl font-bold"
-          style={{ color: 'var(--text-primary)' }}
-        >
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">
           {t('language')}
         </h1>
       </div>
       
       {/* Language Options */}
       <div className="px-4">
-        <div 
-          className="rounded-2xl overflow-hidden"
-          style={{ backgroundColor: 'var(--bg-secondary)' }}
-        >
+        <div className="rounded-2xl overflow-hidden bg-[var(--bg-secondary)]">
           {languages.map((lang, index) => (
             <div key={lang.code}>
               <button
@@ -62,7 +55,7 @@ export const LanguagePage = ({ onBack: _onBack }: LanguagePageProps) => {
               >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{lang.flag}</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{lang.name}</span>
+                  <span className="text-[var(--text-primary)]">{lang.name}</span>
                 </div>
                 
                 {language === lang.code && (
@@ -76,7 +69,7 @@ export const LanguagePage = ({ onBack: _onBack }: LanguagePageProps) => {
                       height="20" 
                       viewBox="0 0 24 24" 
                       fill="none"
-                      style={{ color: 'var(--accent)' }}
+                      className="text-[var(--accent)]"
                     >
                       <path 
                         d="M5 12L10 17L19 8" 
@@ -91,10 +84,7 @@ export const LanguagePage = ({ onBack: _onBack }: LanguagePageProps) => {
               </button>
               
               {index < languages.length - 1 && (
-                <div 
-                  className="ml-[52px]"
-                  style={{ height: '0.5px', backgroundColor: 'var(--separator)' }}
-                />
+                <div className="ml-[52px] h-[0.5px] bg-[var(--separator)]" />
               )}
             </div>
           ))}
@@ -103,10 +93,7 @@ export const LanguagePage = ({ onBack: _onBack }: LanguagePageProps) => {
       
       {/* Info */}
       <div className="px-4 mt-4">
-        <p 
-          className="text-sm"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
+        <p className="text-sm text-[var(--text-tertiary)]">
           {language === 'ru' 
             ? 'Язык интерфейса приложения. Заметки сохраняются на языке оригинала.'
             : 'App interface language. Notes are saved in their original language.'

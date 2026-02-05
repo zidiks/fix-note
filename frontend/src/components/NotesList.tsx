@@ -4,6 +4,8 @@ import { DateGroup } from './DateGroup'
 import { useTelegram } from '../hooks/useTelegram'
 import { Note } from '../api/client'
 import { useI18n } from '../i18n'
+import { EmptyState } from './ui/EmptyState'
+import { Separator } from './ui/Separator'
 
 interface NotesListProps {
   searchQuery: string
@@ -25,17 +27,12 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
       <div className="px-4 pt-4">
         <div className="mb-6">
           <div className="h-6 w-32 skeleton rounded mb-2" />
-          <div
-            className="rounded-xl overflow-hidden"
-            style={{ backgroundColor: 'var(--bg-secondary)' }}
-          >
+          <div className="rounded-xl overflow-hidden bg-[var(--bg-secondary)]">
             {[1, 2, 3].map((i) => (
               <div key={i} className="px-4 py-3">
                 <div className="h-5 skeleton w-3/4 mb-1.5" />
                 <div className="h-4 skeleton w-full" />
-                {i < 3 && (
-                  <div className="mt-3" style={{ height: '1px', backgroundColor: 'var(--separator)' }} />
-                )}
+                {i < 3 && <Separator className="mt-3" />}
               </div>
             ))}
           </div>
@@ -48,37 +45,21 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
   if (isSearchMode) {
     if (searchResults.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center pt-20 px-4">
-          <div className="text-5xl mb-4">🔍</div>
-          <h3
-            className="text-lg font-semibold mb-1"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            {t('searchNoResults')}
-          </h3>
-          <p
-            className="text-center"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            {t('searchNoResultsDesc')}
-          </p>
-        </div>
+        <EmptyState
+          icon="🔍"
+          title={t('searchNoResults')}
+          description={t('searchNoResultsDesc')}
+        />
       )
     }
 
     return (
       <div className="pt-4">
-        <h2
-          className="text-xl font-bold px-4 mb-2"
-          style={{ color: 'var(--text-primary)' }}
-        >
+        <h2 className="text-xl font-bold px-4 mb-2 text-[var(--text-primary)]">
           {t('results')} ({searchResults.length})
         </h2>
 
-        <div
-          className="mx-4 overflow-hidden rounded-xl"
-          style={{ backgroundColor: 'var(--bg-secondary)' }}
-        >
+        <div className="mx-4 overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
           <AnimatePresence mode="popLayout">
             {searchResults.map((result, index) => (
               <motion.div
@@ -106,25 +87,14 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                 }}
               >
                 <div className="px-4 py-3">
-                  <h3
-                    className="font-semibold text-base leading-tight truncate"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
+                  <h3 className="font-semibold text-base leading-tight truncate text-[var(--text-primary)]">
                     {result.summary?.split('\n')[0] || result.content.split('\n')[0].slice(0, 50)}
                   </h3>
-                  <p
-                    className="text-sm truncate mt-0.5"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
+                  <p className="text-sm truncate mt-0.5 text-[var(--text-secondary)]">
                     {result.content.slice(0, 100)}
                   </p>
                 </div>
-                {index < searchResults.length - 1 && (
-                  <div
-                    className="ml-4"
-                    style={{ height: '1px', backgroundColor: 'var(--separator)' }}
-                  />
-                )}
+                {index < searchResults.length - 1 && <Separator className="ml-4" />}
               </motion.div>
             ))}
           </AnimatePresence>
@@ -136,21 +106,11 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
   // Empty state
   if (groupedNotes.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center pt-20 px-4">
-        <div className="text-5xl mb-4">📝</div>
-        <h3
-          className="text-lg font-semibold mb-1"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          {t('noNotes')}
-        </h3>
-        <p
-          className="text-center"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          {t('noNotesDesc')}
-        </p>
-      </div>
+      <EmptyState
+        icon="📝"
+        title={t('noNotes')}
+        description={t('noNotesDesc')}
+      />
     )
   }
 

@@ -40,25 +40,18 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 50 }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="min-h-screen"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
+      className="min-h-screen bg-[var(--bg-primary)]"
     >
       {/* Header */}
       <div className="px-4 pt-4 pb-6">
-        <h1 
-          className="text-2xl font-bold"
-          style={{ color: 'var(--text-primary)' }}
-        >
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">
           {t('myProfile')}
         </h1>
       </div>
       
       {/* Profile Card */}
       <div className="px-4 mb-6">
-        <div 
-          className="rounded-2xl p-5"
-          style={{ backgroundColor: 'var(--bg-secondary)' }}
-        >
+        <div className="rounded-2xl p-5 bg-[var(--bg-secondary)]">
           <div className="flex items-center gap-4">
             {/* Avatar */}
             <div 
@@ -80,17 +73,11 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
             
             {/* User Info */}
             <div className="flex-1">
-              <h2 
-                className="text-lg font-semibold"
-                style={{ color: 'var(--text-primary)' }}
-              >
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                 {user?.first_name} {user?.last_name || ''}
               </h2>
               {user?.username && (
-                <p 
-                  className="text-sm"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
+                <p className="text-sm text-[var(--text-secondary)]">
                   @{user.username}
                 </p>
               )}
@@ -106,10 +93,7 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                 </span>
                 
                 {plan === 'trial' && trialDays > 0 && (
-                  <span 
-                    className="text-xs"
-                    style={{ color: 'var(--warning)' }}
-                  >
+                  <span className="text-xs text-[var(--warning)]">
                     {t('trialDaysLeft', { days: trialDays })}
                   </span>
                 )}
@@ -121,10 +105,7 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
       
       {/* Menu Items */}
       <div className="px-4">
-        <div 
-          className="rounded-2xl overflow-hidden"
-          style={{ backgroundColor: 'var(--bg-secondary)' }}
-        >
+        <div className="rounded-2xl overflow-hidden bg-[var(--bg-secondary)]">
           {/* Subscription */}
           <button
             className="w-full px-4 py-3.5 flex items-center justify-between active:opacity-70 transition-opacity"
@@ -139,7 +120,7 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                   <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
                 </svg>
               </div>
-              <span style={{ color: 'var(--text-primary)' }}>{t('subscription')}</span>
+              <span className="text-[var(--text-primary)]">{t('subscription')}</span>
             </div>
             <div className="flex items-center gap-2">
               <span 
@@ -153,7 +134,7 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                 height="14" 
                 viewBox="0 0 8 14" 
                 fill="none"
-                style={{ color: 'var(--text-tertiary)' }}
+                className="text-[var(--text-tertiary)]"
               >
                 <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -161,10 +142,7 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
           </button>
           
           {/* Separator */}
-          <div 
-            className="ml-[52px]"
-            style={{ height: '0.5px', backgroundColor: 'var(--separator)' }}
-          />
+          <div className="ml-[52px] h-[0.5px] bg-[var(--separator)]" />
           
           {/* Sync Settings */}
           <button
@@ -183,24 +161,21 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                   <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
                 </svg>
               </div>
-              <span style={{ color: 'var(--text-primary)' }}>{t('syncSettings')}</span>
+              <span className="text-[var(--text-primary)]">{t('syncSettings')}</span>
             </div>
             <svg 
               width="8" 
               height="14" 
               viewBox="0 0 8 14" 
               fill="none"
-              style={{ color: 'var(--text-tertiary)' }}
+              className="text-[var(--text-tertiary)]"
             >
               <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
           
           {/* Separator */}
-          <div 
-            className="ml-[52px]"
-            style={{ height: '0.5px', backgroundColor: 'var(--separator)' }}
-          />
+          <div className="ml-[52px] h-[0.5px] bg-[var(--separator)]" />
           
           {/* Language */}
           <button
@@ -218,13 +193,10 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                   <path d="M12 2C14.5 4.5 16 8 16 12C16 16 14.5 19.5 12 22C9.5 19.5 8 16 8 12C8 8 9.5 4.5 12 2Z"/>
                 </svg>
               </div>
-              <span style={{ color: 'var(--text-primary)' }}>{t('language')}</span>
+              <span className="text-[var(--text-primary)]">{t('language')}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span 
-                className="text-sm"
-                style={{ color: 'var(--text-secondary)' }}
-              >
+              <span className="text-sm text-[var(--text-secondary)]">
                 {language === 'ru' ? '🇷🇺 Русский' : '🇬🇧 English'}
               </span>
               <svg 
@@ -232,7 +204,7 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
                 height="14" 
                 viewBox="0 0 8 14" 
                 fill="none"
-                style={{ color: 'var(--text-tertiary)' }}
+                className="text-[var(--text-tertiary)]"
               >
                 <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -243,16 +215,10 @@ export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionCl
       
       {/* Info Section */}
       <div className="px-4 mt-6">
-        <p 
-          className="text-center text-sm"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
+        <p className="text-center text-sm text-[var(--text-tertiary)]">
           {t('allNotesSync')}
         </p>
-        <p 
-          className="text-center text-xs mt-2"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
+        <p className="text-center text-xs mt-2 text-[var(--text-tertiary)]">
           {t('version')} 1.0.0
         </p>
       </div>
