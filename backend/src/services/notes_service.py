@@ -81,6 +81,8 @@ class NotesService:
         # This handles cases where the column might not exist yet
         if note_data.images:
             data["images"] = note_data.images
+        if note_data.voice_url:
+            data["voice_url"] = note_data.voice_url
         
         try:
             result = self.client.table("notes").insert(data).execute()

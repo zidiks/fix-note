@@ -10,6 +10,7 @@ import { useI18n } from '../i18n'
 import { ImageGallery } from './ui/ImageGallery'
 import { LinkPreview, extractUrls } from './ui/LinkPreview'
 import { Toast } from './ui/Toast'
+import { VoicePlayer } from './ui/VoicePlayer'
 import { NoteTabs } from './NoteDetail/NoteTabs'
 import { NoteContentEditor } from './NoteDetail/NoteContentEditor'
 import { NoteActionBar } from './NoteDetail/NoteActionBar'
@@ -297,6 +298,15 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         <p className="text-base font-medium mb-6 text-[var(--text-secondary)] px-5">
           {formattedDate}
         </p>
+
+        {/* Voice Player - show for voice notes with voice_url */}
+        {isVoice && note.voice_url && note.duration_seconds && !isEditing && (
+          <VoicePlayer
+            voiceUrl={note.voice_url}
+            duration={note.duration_seconds}
+            className="px-5"
+          />
+        )}
 
         {/* Images gallery - show at the top if there are images */}
         {hasImages && !isEditing && (

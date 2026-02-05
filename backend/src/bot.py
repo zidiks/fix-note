@@ -425,6 +425,9 @@ async def handle_voice(message: Message):
         file = await bot.get_file(message.voice.file_id)
         file_data = await bot.download_file(file.file_path)
         
+        # Get voice file URL for playback
+        voice_url = await get_telegram_file_url(message.voice.file_id)
+        
         # Transcribe
         transcription = await transcription_service.transcribe_bytes(
             audio_data=file_data.read(),
@@ -457,7 +460,8 @@ async def handle_voice(message: Message):
                 title=title,
                 summary=summary,
                 source="voice",
-                duration_seconds=message.voice.duration
+                duration_seconds=message.voice.duration,
+                voice_url=voice_url
             )
         )
         

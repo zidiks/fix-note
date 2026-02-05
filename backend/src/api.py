@@ -432,6 +432,7 @@ async def get_shared_note(
         source=note.source,
         duration_seconds=note.duration_seconds,
         images=getattr(note, "images", []) or [],
+        voice_url=getattr(note, "voice_url", None),
         created_at=note.created_at
     )
     

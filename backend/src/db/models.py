@@ -42,6 +42,7 @@ class Note(BaseModel):
     source: str = "text"  # 'voice' | 'text' | 'photo'
     duration_seconds: Optional[int] = None
     images: List[str] = []  # Array of image URLs
+    voice_url: Optional[str] = None  # URL of voice file for voice notes
     share_token: Optional[str] = None
     is_public: bool = False
     created_at: datetime
@@ -57,6 +58,7 @@ class PublicNote(BaseModel):
     source: str = "text"
     duration_seconds: Optional[int] = None
     images: List[str] = []
+    voice_url: Optional[str] = None
     created_at: datetime
 
 
@@ -68,6 +70,7 @@ class NoteCreate(BaseModel):
     source: str = "text"
     duration_seconds: Optional[int] = None
     images: List[str] = []
+    voice_url: Optional[str] = None
 
 
 class NoteUpdate(BaseModel):

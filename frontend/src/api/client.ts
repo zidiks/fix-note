@@ -28,6 +28,7 @@ export interface Note {
   source: 'voice' | 'text' | 'photo'
   duration_seconds: number | null
   images: string[] | null
+  voice_url: string | null
   created_at: string
   updated_at: string
 }
@@ -81,6 +82,7 @@ export interface SharedNoteResponse {
     source: 'voice' | 'text' | 'photo'
     duration_seconds: number | null
     images: string[] | null
+    voice_url: string | null
     created_at: string
   }
   is_owner: boolean
