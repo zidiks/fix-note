@@ -107,6 +107,9 @@ const translationsRu = {
   voiceNote: 'Голосовая',
   textNote: 'Текст',
   duration: 'Длительность',
+  tabAiSummary: 'Суммарайз',
+  tabFullText: 'Полный текст',
+  noSummary: 'Нет суммарайза',
   
   // Misc
   allNotesSync: 'Все заметки синхронизируются с этим аккаунтом',
@@ -283,6 +286,9 @@ const translationsEn: typeof translationsRu = {
   voiceNote: 'Voice',
   textNote: 'Text',
   duration: 'Duration',
+  tabAiSummary: 'AI Summary',
+  tabFullText: 'Full Text',
+  noSummary: 'No summary',
   
   // Misc
   allNotesSync: 'All notes are synced with this account',

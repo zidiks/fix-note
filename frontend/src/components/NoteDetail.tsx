@@ -1,8 +1,8 @@
 import clsx from "clsx";
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { format } from 'date-fns'
-import { ru } from 'date-fns/locale'
+import { format, isToday, isYesterday } from 'date-fns'
+import { enUS, ru } from 'date-fns/locale'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Note, api } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
@@ -287,7 +287,8 @@ interface NoteDetailProps {
 export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, switchInlineQuery, close } = useTelegram()
   const { subscription } = useSubscription()
-  const { t } = useI18n()
+  const { t, language } = useI18n()
+  const locale = language === 'ru' ? ru : enUS
   const [isSharing, setIsSharing] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(note.content)
@@ -296,8 +297,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [viewportOffset, setViewportOffset] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
+  const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const summaryTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Default to summary tab when note has summary, otherwise full text; reset when note changes
+  useEffect(() => {
+    setActiveTab(note.summary ? 'summary' : 'full')
+  }, [note.id, note.summary])
 
   // Check if sync is enabled for user
   const canSync = subscription?.limits.sync_enabled ?? false
@@ -316,7 +323,12 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const urls = useMemo(() => extractUrls(note.content), [note.content])
 
   const date = new Date(note.created_at)
-  const formattedDate = format(date, "d MMMM yyyy 'в' HH:mm", { locale: ru })
+  const formattedDate = useMemo(() => {
+    const d = new Date(note.created_at)
+    if (isToday(d)) return `${t('today')}, ${format(d, 'HH:mm', { locale })}`
+    if (isYesterday(d)) return `${t('yesterday')}, ${format(d, 'HH:mm', { locale })}`
+    return format(d, 'd MMM', { locale })
+  }, [note.created_at, language, t])
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -552,7 +564,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -50 }}
       transition={{ duration: 0.2 }}
-      style={{ backgroundColor: 'var(--bg-primary)' }}
+      style={{ backgroundColor: 'var(--bg-secondary)' }}
     >
       {/* Toast notification */}
       <AnimatePresence>
@@ -574,127 +586,124 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             : 'calc(100px + env(safe-area-inset-bottom, 0px))'
         }}
       >
-        {/* Images gallery - show at the top if there are images */}
-        {hasImages && !isEditing && (
-          <ImageGallery images={note.images!} />
-        )}
-
         {/* Title */}
         {displayTitle && (
           <h1
-            className="text-xl font-semibold mb-4 leading-tight"
+            className="text-[22px] font-bold mt-2 mb-1.5 leading-tight leading-6"
             style={{ color: 'var(--text-primary)' }}
           >
             {displayTitle}
           </h1>
         )}
 
-        {/* Meta info */}
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-3xl">{icon}</span>
-          <div>
-            <span className={`badge ${isVoice ? 'badge-voice' : hasImages ? 'badge-voice' : 'badge-text'}`}>
-              {hasImages ? 'С изображениями' : isVoice ? 'Голосовая заметка' : 'Текстовая заметка'}
-            </span>
-            {isVoice && note.duration_seconds && (
-              <span
-                className="text-sm ml-2"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {formatDuration(note.duration_seconds)}
-              </span>
-            )}
-            {hasImages && (
-              <span
-                className="text-sm ml-2"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {note.images!.length} фото
-              </span>
-            )}
-          </div>
-        </div>
-
         {/* Date */}
         <p
-          className="text-sm mb-6"
+          className="text-base font-medium mb-6"
           style={{ color: 'var(--text-secondary)' }}
         >
           {formattedDate}
         </p>
 
-        {/* Summary */}
-        {(note.summary || isEditing) && (
-          <div className="mb-6">
-            <h3
-              className="text-xs font-semibold uppercase mb-2"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              Краткое содержание
-            </h3>
-            <div
-              className="ios-card p-4"
-              style={{ backgroundColor: 'var(--bg-secondary)' }}
-            >
-              {isEditing ? (
-                <textarea
-                  ref={summaryTextareaRef}
-                  value={editedSummary}
-                  onChange={(e) => {
-                    setEditedSummary(e.target.value)
-                    autoResizeTextarea(e.target)
-                    scrollCursorIntoView(e.target)
-                  }}
-                  className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden"
-                  style={{ color: 'var(--text-primary)', scrollMarginBottom: 100 }}
-                  placeholder="Введите краткое содержание..."
-                />
-              ) : (
-                <p
-                  className="text-base leading-relaxed whitespace-pre-wrap selectable-text"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  {note.summary}
-                </p>
-              )}
-            </div>
-          </div>
+        {/* Images gallery - show at the top if there are images */}
+        {hasImages && !isEditing && (
+          <ImageGallery images={note.images!} />
         )}
 
-        {/* Full content */}
-        <div>
-          <h3
-            className="text-xs font-semibold uppercase mb-2"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            {note.summary ? 'Полный текст' : 'Содержание'}
-          </h3>
-          <div
-            className="ios-card p-4"
-            style={{ backgroundColor: 'var(--bg-secondary)' }}
-          >
-            {isEditing ? (
+        {/* Tabs: AI Summary | Full Text */}
+        <div className="mb-4">
+          <div className="flex border-b" style={{ borderColor: 'var(--separator)' }}>
+            <button
+              type="button"
+              onClick={() => {
+                hapticImpact('light')
+                setActiveTab('summary')
+              }}
+              className="flex-1 pb-3 pt-1 text-center text-base font-medium transition-colors"
+              style={{
+                color: activeTab === 'summary' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                borderBottomWidth: 2,
+                borderBottomStyle: 'solid',
+                borderBottomColor: activeTab === 'summary' ? 'var(--accent)' : 'transparent',
+                marginBottom: -1,
+              }}
+            >
+              {t('tabAiSummary')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                hapticImpact('light')
+                setActiveTab('full')
+              }}
+              className="flex-1 pb-3 pt-1 text-center text-base font-medium transition-colors"
+              style={{
+                color: activeTab === 'full' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                borderBottomWidth: 2,
+                borderBottomStyle: 'solid',
+                borderBottomColor: activeTab === 'full' ? 'var(--accent)' : 'transparent',
+                marginBottom: -1,
+              }}
+            >
+              {t('tabFullText')}
+            </button>
+          </div>
+        </div>
+
+        {/* Tab content */}
+        <div
+          className="ios-card p-4"
+          style={{ backgroundColor: 'var(--bg-secondary)' }}
+        >
+          {activeTab === 'summary' ? (
+            isEditing ? (
               <textarea
-                ref={contentTextareaRef}
-                value={editedContent}
+                ref={summaryTextareaRef}
+                value={editedSummary}
                 onChange={(e) => {
-                  setEditedContent(e.target.value)
+                  setEditedSummary(e.target.value)
                   autoResizeTextarea(e.target)
                   scrollCursorIntoView(e.target)
                 }}
                 className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden"
                 style={{ color: 'var(--text-primary)', scrollMarginBottom: 100 }}
-                placeholder="Введите текст заметки..."
+                placeholder={t('noSummary')}
               />
-            ) : (
+            ) : note.summary ? (
               <p
                 className="text-base leading-relaxed whitespace-pre-wrap selectable-text"
                 style={{ color: 'var(--text-primary)' }}
               >
-                {note.content}
+                {note.summary}
               </p>
-            )}
-          </div>
+            ) : (
+              <p
+                className="text-base leading-relaxed"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                {t('noSummary')}
+              </p>
+            )
+          ) : isEditing ? (
+            <textarea
+              ref={contentTextareaRef}
+              value={editedContent}
+              onChange={(e) => {
+                setEditedContent(e.target.value)
+                autoResizeTextarea(e.target)
+                scrollCursorIntoView(e.target)
+              }}
+              className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden"
+              style={{ color: 'var(--text-primary)', scrollMarginBottom: 100 }}
+              placeholder="Введите текст заметки..."
+            />
+          ) : (
+            <p
+              className="text-base leading-relaxed whitespace-pre-wrap selectable-text"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {note.content}
+            </p>
+          )}
         </div>
 
         {/* Link previews */}
