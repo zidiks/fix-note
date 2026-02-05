@@ -279,7 +279,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       {/* Content */}
       <main
-        className="px-4 pt-4 safe-area-top hide-scrollbar overflow-y-auto"
+        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto"
         style={{
           paddingBottom: isEditing && keyboardHeight > 0
             ? keyboardHeight + 80
@@ -288,19 +288,19 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       >
         {/* Title */}
         {displayTitle && (
-          <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-tight leading-6 text-[var(--text-primary)]">
+          <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5">
             {displayTitle}
           </h1>
         )}
 
         {/* Date */}
-        <p className="text-base font-medium mb-6 text-[var(--text-secondary)]">
+        <p className="text-base font-medium mb-6 text-[var(--text-secondary)] px-5">
           {formattedDate}
         </p>
 
         {/* Images gallery - show at the top if there are images */}
         {hasImages && !isEditing && (
-          <ImageGallery images={note.images!} />
+          <ImageGallery className="px-5" images={note.images!} />
         )}
 
         {/* Tabs: AI Summary | Full Text */}

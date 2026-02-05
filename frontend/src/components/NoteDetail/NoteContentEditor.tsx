@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react'
 import { useI18n } from '../../i18n'
-import { Card } from '../ui/Card'
 
 interface NoteContentEditorProps {
   content: string
@@ -60,7 +59,7 @@ export const NoteContentEditor = ({
   }, [isEditing])
 
   return (
-    <Card className="p-4">
+    <div className="px-5">
       {activeTab === 'summary' ? (
         isEditing ? (
           <textarea
@@ -102,7 +101,7 @@ export const NoteContentEditor = ({
           {content}
         </p>
       )}
-    </Card>
+    </div>
   )
 }
 

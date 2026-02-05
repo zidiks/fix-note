@@ -14,8 +14,8 @@ export const NoteTabs = ({ activeTab, onTabChange, hasSummary }: NoteTabsProps) 
   if (!hasSummary) return null
 
   return (
-    <div className="mb-4">
-      <div className="flex border-b border-[var(--separator)]">
+    <div className="mb-6">
+      <div className="flex border-b border-[var(--separator)] px-5">
         <button
           type="button"
           onClick={() => {

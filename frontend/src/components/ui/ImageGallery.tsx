@@ -1,11 +1,13 @@
+import clsx from "clsx";
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface ImageGalleryProps {
   images: string[]
+  className?: string
 }
 
-export const ImageGallery = ({ images }: ImageGalleryProps) => {
+export const ImageGallery = ({ images, className }: ImageGalleryProps) => {
   const [selectedImage, setSelectedImage] = useState<number | null>(null)
 
   if (!images || images.length === 0) return null
@@ -15,7 +17,10 @@ export const ImageGallery = ({ images }: ImageGalleryProps) => {
   return (
     <>
       {/* Gallery grid */}
-      <div className={`grid ${gridCols} gap-2 mb-6`}>
+      <div className={clsx(
+        `grid ${gridCols} gap-2 mb-6`,
+        className,
+      )}>
         {images.map((img, index) => (
           <motion.div
             key={index}
