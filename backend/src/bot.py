@@ -14,8 +14,10 @@ from aiogram.types import (
     InputTextMessageContent,
     PreCheckoutQuery,
     LabeledPrice,
-    PhotoSize
+    PhotoSize,
+    MessageEntity
 )
+from aiogram.enums import MessageEntityType
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.methods import CreateInvoiceLink
@@ -58,6 +60,40 @@ async def get_telegram_file_url(file_id: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Failed to get file URL: {e}")
     return None
+
+
+def extract_urls_from_message(message: Message) -> List[str]:
+    """Extract URLs from message text or caption using entities."""
+    urls = []
+    text = message.text or message.caption
+    entities = message.entities or message.caption_entities
+    
+    if not entities:
+        return urls
+    
+    for entity in entities:
+        if entity.type == MessageEntityType.URL:
+            if text:
+                url = text[entity.offset:entity.offset + entity.length]
+                urls.append(url)
+        elif entity.type == MessageEntityType.TEXT_LINK:
+            if entity.url:
+                urls.append(entity.url)
+    
+    return urls
+
+
+def get_note_open_keyboard(note_id: str) -> Optional[InlineKeyboardMarkup]:
+    """Get inline keyboard with button to open note in Mini App."""
+    if not settings.public_url:
+        return None
+    
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📖 Открыть заметку",
+            web_app=WebAppInfo(url=f"{settings.public_url}/app?note={note_id}")
+        )]
+    ])
 
 
 async def get_largest_photo(photos: List[PhotoSize]) -> Optional[PhotoSize]:
@@ -469,19 +505,16 @@ async def handle_voice(message: Message):
         await rag_service.index_note(str(note.id), transcription)
         
         # Final response - edit the same message
-        response = f"""✅ **Заметка сохранена!**
-
-📝 **Текст:**
-{transcription[:500]}{"..." if len(transcription) > 500 else ""}
-
-"""
+        response = "✅ **Заметка сохранена!**"
+        if title:
+            response += f"\n\n📌 **{title}**"
         if summary:
-            response += f"""💡 **Саммари:**
-{summary}"""
+            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
         elif not can_summarize:
-            response += "_💡 AI-саммари недоступно на вашем плане_"
+            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
         
-        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+        keyboard = get_note_open_keyboard(str(note.id))
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
         
     except Exception as e:
         logger.error(f"Voice processing error: {e}")
@@ -535,36 +568,61 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
     combined_text = "\n\n".join(combined_texts) if combined_texts else "📷 Изображения без текста"
     source = "photo" if image_urls else "text"
 
-    # Generate title (and summary) via DeepSeek when allowed
-    title, summary = None, None
-    can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
-    if can_summarize and len(combined_text.strip()) >= 10:
-        title, summary = await summarizer_service.summarize_with_title(combined_text, user.language_code)
-        if title or summary:
-            await notes_service.increment_usage(user.id, "summaries", 1)
+    # Send initial status message
+    status_msg = await bot.send_message(chat_id, "📝 Сохраняю пересланные сообщения...")
+    
+    try:
+        # Extract URLs from all messages and add to content
+        all_urls = []
+        for msg in messages:
+            all_urls.extend(extract_urls_from_message(msg))
+        if all_urls:
+            combined_text += "\n\n" + "\n".join(all_urls)
+        
+        # Generate title (and summary) via DeepSeek when allowed
+        title, summary = None, None
+        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+        if can_summarize and len(combined_text.strip()) >= 10:
+            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            title, summary = await summarizer_service.summarize_with_title(combined_text, user.language_code)
+            if title or summary:
+                await notes_service.increment_usage(user.id, "summaries", 1)
 
-    # Save as single note
-    note = await notes_service.create_note(
-        user_id=user.id,
-        note_data=NoteCreate(
-            content=combined_text,
-            title=title,
-            summary=summary,
-            source=source,
-            images=image_urls
+        # Save as single note
+        note = await notes_service.create_note(
+            user_id=user.id,
+            note_data=NoteCreate(
+                content=combined_text,
+                title=title,
+                summary=summary,
+                source=source,
+                images=image_urls
+            )
         )
-    )
-    
-    # Index for RAG
-    await rag_service.index_note(str(note.id), combined_text)
-    
-    # Send confirmation
-    msg_count = len(messages)
-    photo_text = f" с {len(image_urls)} фото" if image_urls else ""
-    await bot.send_message(
-        chat_id,
-        f"✅ {msg_count} сообщений{photo_text} сохранено как 1 заметка!"
-    )
+        
+        # Index for RAG
+        await rag_service.index_note(str(note.id), combined_text)
+        
+        # Final response with button
+        msg_count = len(messages)
+        photo_text = f" с {len(image_urls)} фото" if image_urls else ""
+        response = f"✅ **{msg_count} сообщений{photo_text} сохранено как 1 заметка!**"
+        if title:
+            response += f"\n\n📌 **{title}**"
+        if summary:
+            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+        elif not can_summarize:
+            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+        
+        keyboard = get_note_open_keyboard(str(note.id))
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Forwarded messages processing error: {e}")
+        try:
+            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+        except:
+            await bot.send_message(chat_id, "❌ Произошла ошибка при сохранении. Попробуй позже.")
 
 
 async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
@@ -606,33 +664,59 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
     # Combine captions or use default text
     content = "\n\n".join(captions) if captions else f"📷 {len(image_urls)} изображений"
 
-    # Generate title (and summary) via DeepSeek when allowed
-    title, summary = None, None
-    can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
-    if can_summarize and len(content.strip()) >= 10:
-        title, summary = await summarizer_service.summarize_with_title(content, user.language_code)
-        if title or summary:
-            await notes_service.increment_usage(user.id, "summaries", 1)
+    # Send initial status message
+    status_msg = await bot.send_message(chat_id, "📷 Обрабатываю изображения...")
+    
+    try:
+        # Extract URLs from all messages and add to content
+        all_urls = []
+        for msg in messages:
+            all_urls.extend(extract_urls_from_message(msg))
+        if all_urls:
+            content += "\n\n" + "\n".join(all_urls)
+        
+        # Generate title (and summary) via DeepSeek when allowed
+        title, summary = None, None
+        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+        if can_summarize and len(content.strip()) >= 10:
+            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            title, summary = await summarizer_service.summarize_with_title(content, user.language_code)
+            if title or summary:
+                await notes_service.increment_usage(user.id, "summaries", 1)
 
-    # Save note
-    note = await notes_service.create_note(
-        user_id=user.id,
-        note_data=NoteCreate(
-            content=content,
-            title=title,
-            summary=summary,
-            source="photo",
-            images=image_urls
+        # Save note
+        note = await notes_service.create_note(
+            user_id=user.id,
+            note_data=NoteCreate(
+                content=content,
+                title=title,
+                summary=summary,
+                source="photo",
+                images=image_urls
+            )
         )
-    )
-    
-    # Index for RAG
-    await rag_service.index_note(str(note.id), content)
-    
-    await bot.send_message(
-        chat_id,
-        f"✅ Сохранено {len(image_urls)} фото как заметка!"
-    )
+        
+        # Index for RAG
+        await rag_service.index_note(str(note.id), content)
+        
+        # Final response with button
+        response = f"✅ **Сохранено {len(image_urls)} фото как заметка!**"
+        if title:
+            response += f"\n\n📌 **{title}**"
+        if summary:
+            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+        elif not can_summarize:
+            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+        
+        keyboard = get_note_open_keyboard(str(note.id))
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Media group processing error: {e}")
+        try:
+            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+        except:
+            await bot.send_message(chat_id, "❌ Произошла ошибка при сохранении. Попробуй позже.")
 
 
 @router.message(F.text)
@@ -722,27 +806,54 @@ async def handle_text(message: Message):
 
 async def save_text_note(message: Message, user, text: str):
     """Save text as a note. Generate title (and summary) via DeepSeek when allowed."""
-    title, summary = None, None
-    can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
-    if can_summarize and len(text.strip()) >= 10:
-        title, summary = await summarizer_service.summarize_with_title(text, user.language_code)
-        if title or summary:
-            await notes_service.increment_usage(user.id, "summaries", 1)
+    # Send initial status message
+    status_msg = await message.answer("📝 Сохраняю заметку...")
+    
+    try:
+        # Extract URLs from message entities and add to content
+        urls = extract_urls_from_message(message)
+        if urls:
+            text += "\n\n" + "\n".join(urls)
+        
+        title, summary = None, None
+        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+        if can_summarize and len(text.strip()) >= 10:
+            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            title, summary = await summarizer_service.summarize_with_title(text, user.language_code)
+            if title or summary:
+                await notes_service.increment_usage(user.id, "summaries", 1)
 
-    note = await notes_service.create_note(
-        user_id=user.id,
-        note_data=NoteCreate(
-            content=text,
-            title=title,
-            summary=summary,
-            source="text"
+        note = await notes_service.create_note(
+            user_id=user.id,
+            note_data=NoteCreate(
+                content=text,
+                title=title,
+                summary=summary,
+                source="text"
+            )
         )
-    )
 
-    # Index for RAG
-    await rag_service.index_note(str(note.id), text)
+        # Index for RAG
+        await rag_service.index_note(str(note.id), text)
 
-    await message.answer("✅ Заметка сохранена!")
+        # Final response with button to open note
+        response = "✅ **Заметка сохранена!**"
+        if title:
+            response += f"\n\n📌 **{title}**"
+        if summary:
+            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+        elif not can_summarize:
+            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+        
+        keyboard = get_note_open_keyboard(str(note.id))
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Text note save error: {e}")
+        try:
+            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+        except:
+            await message.answer("❌ Произошла ошибка при сохранении. Попробуй позже.")
 
 
 @router.message(F.photo)
@@ -815,20 +926,57 @@ async def handle_photo(message: Message):
     # Get caption or use default
     content = message.caption.strip() if message.caption else "📷 Изображение"
     
-    # Save note
-    note = await notes_service.create_note(
-        user_id=user.id,
-        note_data=NoteCreate(
-            content=content,
-            source="photo",
-            images=[url]
+    # Send initial status message
+    status_msg = await message.answer("📷 Обрабатываю изображение...")
+    
+    try:
+        # Extract URLs from message entities and add to content
+        urls = extract_urls_from_message(message)
+        if urls:
+            content += "\n\n" + "\n".join(urls)
+        
+        # Generate title (and summary) via DeepSeek when allowed
+        title, summary = None, None
+        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+        if can_summarize and len(content.strip()) >= 10:
+            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            title, summary = await summarizer_service.summarize_with_title(content, user.language_code)
+            if title or summary:
+                await notes_service.increment_usage(user.id, "summaries", 1)
+        
+        # Save note
+        note = await notes_service.create_note(
+            user_id=user.id,
+            note_data=NoteCreate(
+                content=content,
+                title=title,
+                summary=summary,
+                source="photo",
+                images=[url]
+            )
         )
-    )
-    
-    # Index for RAG
-    await rag_service.index_note(str(note.id), content)
-    
-    await message.answer("✅ Фото сохранено как заметка!")
+        
+        # Index for RAG
+        await rag_service.index_note(str(note.id), content)
+        
+        # Final response with button
+        response = "✅ **Заметка сохранена!**"
+        if title:
+            response += f"\n\n📌 **{title}**"
+        if summary:
+            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+        elif not can_summarize:
+            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+        
+        keyboard = get_note_open_keyboard(str(note.id))
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Photo processing error: {e}")
+        try:
+            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+        except:
+            await message.answer("❌ Произошла ошибка при сохранении. Попробуй позже.")
 
 
 # Payment handlers for Telegram Stars

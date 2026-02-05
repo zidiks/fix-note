@@ -280,7 +280,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       {/* Content */}
       <main
-        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto"
+        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto overflow-x-hidden"
         style={{
           paddingBottom: isEditing && keyboardHeight > 0
             ? keyboardHeight + 80
@@ -289,7 +289,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       >
         {/* Title */}
         {displayTitle && (
-          <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5">
+          <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
             {displayTitle}
           </h1>
         )}
@@ -334,7 +334,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
         {/* Link previews */}
         {urls.length > 0 && !isEditing && (
-          <div className="mt-6">
+          <div className="mt-6 px-5">
             <h3 className="text-xs font-semibold uppercase mb-2 text-[var(--text-secondary)]">
               Ссылки ({urls.length})
             </h3>

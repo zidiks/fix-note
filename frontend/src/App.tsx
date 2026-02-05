@@ -56,8 +56,21 @@ function App() {
     expand()
     disableVerticalSwipes()
 
-    // Check for start_param
-    if (startParam) {
+    // Check for start_param or URL parameter
+    const urlParams = new URLSearchParams(window.location.search)
+    const noteId = urlParams.get('note')
+    
+    if (noteId) {
+      // Open note by ID from URL parameter
+      api.getNote(noteId)
+        .then((note) => {
+          setSelectedNote(note)
+          setViewState('detail')
+        })
+        .catch((error) => {
+          console.error('Failed to load note:', error)
+        })
+    } else if (startParam) {
       // Check if it's a Notion OAuth code (format: notion_code_XXXXX)
       if (startParam.startsWith('notion_code_')) {
         // Navigate to sync settings - it will check for pending OAuth in database

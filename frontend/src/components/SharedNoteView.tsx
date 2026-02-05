@@ -1,12 +1,16 @@
+import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { format } from 'date-fns'
-import { ru } from 'date-fns/locale'
+import { format, isToday, isYesterday } from 'date-fns'
+import { enUS, ru } from 'date-fns/locale'
 import { SharedNoteResponse } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
+import { useI18n } from '../i18n'
 import { ImageGallery } from './ui/ImageGallery'
-import { Badge } from './ui/Badge'
-import { Card } from './ui/Card'
+import { LinkPreview, extractUrls } from './ui/LinkPreview'
 import { LoadingSpinner } from './ui/LoadingSpinner'
+import { VoicePlayer } from './ui/VoicePlayer'
+import { NoteTabs } from './NoteDetail/NoteTabs'
+import { NoteContentEditor } from './NoteDetail/NoteContentEditor'
 
 interface SharedNoteViewProps {
   data?: SharedNoteResponse
@@ -15,11 +19,25 @@ interface SharedNoteViewProps {
 
 export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
   const { hapticImpact, close } = useTelegram()
+  const { t, language } = useI18n()
+  const locale = language === 'ru' ? ru : enUS
+  const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => 
+    data?.note.summary ? 'summary' : 'full'
+  )
+
+  // Update active tab when data loads
+  useEffect(() => {
+    if (data?.note.summary) {
+      setActiveTab('summary')
+    } else {
+      setActiveTab('full')
+    }
+  }, [data?.note.id, data?.note.summary])
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-secondary)]">
         <div className="text-center">
           <LoadingSpinner size="lg" className="mx-auto mb-4" />
           <p className="text-[var(--text-secondary)]">Загрузка заметки...</p>
@@ -31,7 +49,7 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
   // Not found or access denied
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg-secondary)]">
         <div className="text-center">
           <div className="text-6xl mb-4">🔒</div>
           <h2 className="text-xl font-bold mb-2 text-[var(--text-primary)]">
@@ -54,111 +72,116 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
     )
   }
 
-  const { note, is_owner } = data
+  const { note } = data
   const isVoice = note.source === 'voice'
   const hasImages = note.images && note.images.length > 0
-  const icon = hasImages ? '🖼️' : isVoice ? '🎤' : '📝'
 
+  // Display title: AI-generated or first line of summary/content
   const displayTitle = note.title?.trim() ||
     (note.summary ? note.summary.split('\n')[0].trim() : null) ||
     note.content.split('\n')[0].trim() ||
     null
 
-  const date = new Date(note.created_at)
-  const formattedDate = format(date, "d MMMM yyyy 'в' HH:mm", { locale: ru })
+  // Extract URLs from content
+  const urls = useMemo(() => extractUrls(note.content), [note.content])
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${String(secs).padStart(2, '0')}`
-  }
+  const formattedDate = useMemo(() => {
+    const d = new Date(note.created_at)
+    if (isToday(d)) return `${t('today')}, ${format(d, 'HH:mm', { locale })}`
+    if (isYesterday(d)) return `${t('yesterday')}, ${format(d, 'HH:mm', { locale })}`
+    return format(d, 'd MMM', { locale })
+  }, [note.created_at, language, t])
 
   return (
     <motion.div
-      className="min-h-screen bg-[var(--bg-primary)]"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      className="min-h-screen bg-[var(--bg-secondary)]"
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -50 }}
+      transition={{ duration: 0.2 }}
     >
-      {/* Header */}
-      <header
-        className="sticky top-0 z-50 safe-area-top bg-[var(--bg-primary)] backdrop-blur-[20px]"
-      >
-        <div className="flex items-center justify-center px-4 py-3">
-          {is_owner ? (
-            <Badge className="bg-[rgba(52,199,89,0.15)] text-[#34C759]">
-              Ваша заметка
-            </Badge>
-          ) : (
-            <Badge className="bg-[rgba(0,122,255,0.15)] text-[var(--accent)]">
-              Общая заметка
-            </Badge>
-          )}
-        </div>
-      </header>
-
       {/* Content */}
-      <main className="px-4 pb-8 safe-area-bottom">
-        {/* Images gallery */}
-        {hasImages && <ImageGallery images={note.images!} />}
-
+      <main
+        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto overflow-x-hidden"
+        style={{
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))'
+        }}
+      >
         {/* Title */}
         {displayTitle && (
-          <h1 className="text-xl font-semibold mb-4 leading-tight text-[var(--text-primary)]">
+          <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
             {displayTitle}
           </h1>
         )}
 
-        {/* Meta info */}
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-3xl">{icon}</span>
-          <div>
-            <Badge variant={hasImages ? 'photo' : isVoice ? 'voice' : 'text'}>
-              {hasImages ? 'С изображениями' : isVoice ? 'Голосовая заметка' : 'Текстовая заметка'}
-            </Badge>
-            {isVoice && note.duration_seconds && (
-              <span className="text-sm ml-2 text-[var(--text-secondary)]">
-                {formatDuration(note.duration_seconds)}
-              </span>
-            )}
-            {hasImages && (
-              <span className="text-sm ml-2 text-[var(--text-secondary)]">
-                {note.images!.length} фото
-              </span>
-            )}
-          </div>
-        </div>
-
         {/* Date */}
-        <p className="text-sm mb-6 text-[var(--text-secondary)]">
+        <p className="text-base font-medium mb-5 text-[var(--text-secondary)] px-5">
           {formattedDate}
         </p>
 
-        {/* Summary */}
-        {note.summary && (
-          <div className="mb-6">
-            <h3 className="text-xs font-semibold uppercase mb-2 text-[var(--text-secondary)]">
-              Краткое содержание
-            </h3>
-            <Card className="p-4">
-              <p className="text-base leading-relaxed whitespace-pre-wrap selectable-text text-[var(--text-primary)]">
-                {note.summary}
-              </p>
-            </Card>
-          </div>
+        {/* Voice Player - show for voice notes with voice_url */}
+        {isVoice && note.voice_url && note.duration_seconds && (
+          <VoicePlayer
+            voiceUrl={note.voice_url}
+            duration={note.duration_seconds}
+            className="px-5"
+          />
         )}
 
-        {/* Full content */}
-        <div>
-          <h3 className="text-xs font-semibold uppercase mb-2 text-[var(--text-secondary)]">
-            {note.summary ? 'Полный текст' : 'Содержание'}
-          </h3>
-          <Card className="p-4">
-            <p className="text-base leading-relaxed whitespace-pre-wrap selectable-text text-[var(--text-primary)]">
-              {note.content}
-            </p>
-          </Card>
-        </div>
+        {/* Images gallery - show at the top if there are images */}
+        {hasImages && (
+          <ImageGallery className="px-5" images={note.images!} />
+        )}
+
+        {/* Tabs: AI Summary | Full Text */}
+        <NoteTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          hasSummary={!!note.summary}
+        />
+
+        {/* Tab content - read-only mode */}
+        <NoteContentEditor
+          content={note.content}
+          summary={note.summary}
+          isEditing={false}
+          activeTab={activeTab}
+          editedContent={note.content}
+          editedSummary={note.summary || ''}
+          onContentChange={() => {}}
+          onSummaryChange={() => {}}
+        />
+
+        {/* Link previews */}
+        {urls.length > 0 && (
+          <div className="mt-6 px-5">
+            <h3 className="text-xs font-semibold uppercase mb-2 text-[var(--text-secondary)]">
+              Ссылки ({urls.length})
+            </h3>
+            <div className="space-y-2">
+              {urls.map((url, index) => (
+                <LinkPreview
+                  key={index}
+                  url={url}
+                  onClick={() => hapticImpact('light')}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Bottom fade gradient */}
+      <motion.div
+        className="bottom-fade"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{
+          delay: 0.15,
+          duration: 0.25,
+          ease: [0.25, 0.46, 0.45, 0.94]
+        }}
+      />
     </motion.div>
   )
 }

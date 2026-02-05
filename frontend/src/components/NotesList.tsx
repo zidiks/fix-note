@@ -1,9 +1,9 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { useNotes, useSearchNotes } from '../hooks/useNotes'
-import { DateGroup } from './DateGroup'
-import { useTelegram } from '../hooks/useTelegram'
+import { AnimatePresence } from 'framer-motion'
 import { Note } from '../api/client'
+import { useNotes, useSearchNotes } from '../hooks/useNotes'
 import { useI18n } from '../i18n'
+import { DateGroup } from './DateGroup'
+import { NoteCard } from './NoteCard'
 import { EmptyState } from './ui/EmptyState'
 import { Separator } from './ui/Separator'
 
@@ -13,7 +13,6 @@ interface NotesListProps {
 }
 
 export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
-  const { hapticImpact } = useTelegram()
   const { groupedNotes, isLoading } = useNotes()
   const { results: searchResults, isLoading: isSearching } = useSearchNotes(searchQuery)
   const { t } = useI18n()
@@ -61,43 +60,31 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
 
         <div className="mx-4 overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
           <AnimatePresence mode="popLayout">
-            {searchResults.map((result, index) => (
-              <motion.div
-                key={result.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="active:opacity-70 transition-opacity cursor-pointer"
-                onClick={() => {
-                  hapticImpact('light')
-                  if (onSelectNote) {
-                    onSelectNote({
-                      id: result.id,
-                      user_id: '',
-                      content: result.content,
-                      title: result.title ?? null,
-                      summary: result.summary,
-                      source: result.source || 'text',
-                      duration_seconds: result.duration_seconds,
-                      images: result.images || null,
-                      voice_url: result.voice_url || null,
-                      created_at: result.created_at,
-                      updated_at: result.created_at,
-                    })
-                  }
-                }}
-              >
-                <div className="px-4 py-3">
-                  <h3 className="font-semibold text-base leading-tight truncate text-[var(--text-primary)]">
-                    {result.summary?.split('\n')[0] || result.content.split('\n')[0].slice(0, 50)}
-                  </h3>
-                  <p className="text-sm truncate mt-0.5 text-[var(--text-secondary)]">
-                    {result.content.slice(0, 100)}
-                  </p>
-                </div>
-                {index < searchResults.length - 1 && <Separator className="ml-4" />}
-              </motion.div>
-            ))}
+            {searchResults.map((result, index) => {
+              const note: Note = {
+                id: result.id,
+                user_id: '',
+                content: result.content,
+                title: result.title ?? null,
+                summary: result.summary,
+                source: result.source || 'text',
+                duration_seconds: result.duration_seconds,
+                images: result.images || null,
+                voice_url: result.voice_url || null,
+                created_at: result.created_at,
+                updated_at: result.created_at,
+              }
+
+              return (
+                <NoteCard
+                  key={result.id}
+                  note={note}
+                  onSelect={onSelectNote}
+                  isFirst={index === 0}
+                  isLast={index === searchResults.length - 1}
+                />
+              )
+            })}
           </AnimatePresence>
         </div>
       </div>
