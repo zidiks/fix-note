@@ -2,13 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "PT Root UI";
+  src:
+    url("/fonts/pt-root-ui/pt-root-ui_vf.woff2") format("woff2-variations"),
+    url("/fonts/pt-root-ui/pt-root-ui_vf.woff") format("woff-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PT Root UI";
+  src:
+    url("/fonts/pt-root-ui/pt-root-ui_light.woff2") format("woff2"),
+    url("/fonts/pt-root-ui/pt-root-ui_light.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PT Root UI";
+  src:
+    url("/fonts/pt-root-ui/pt-root-ui_regular.woff2") format("woff2"),
+    url("/fonts/pt-root-ui/pt-root-ui_regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PT Root UI";
+  src:
+    url("/fonts/pt-root-ui/pt-root-ui_medium.woff2") format("woff2"),
+    url("/fonts/pt-root-ui/pt-root-ui_medium.woff") format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PT Root UI";
+  src:
+    url("/fonts/pt-root-ui/pt-root-ui_bold.woff2") format("woff2"),
+    url("/fonts/pt-root-ui/pt-root-ui_bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* CSS Variables for iOS-like theme */
 :root {
   /* Light mode (default) */
-  --bg-primary: #F2F2F7;
-  --bg-secondary: #FFFFFF;
-  --text-primary: #000000;
-  --text-secondary: #8E8E93;
+  --bg-primary: #F0F0F2;
+  --bg-secondary: #FCFCFC;
+  --text-primary: #29333F;
+  --text-secondary: #8C9198;
   --text-tertiary: #AEAEB2;
   --accent: #007AFF;
   --accent-secondary: #5856D6;
@@ -62,7 +112,7 @@ html, body {
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  font-family: "PT Root UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -573,18 +623,14 @@ input, textarea {
 
 /* ===== Header Avatar ===== */
 .header-avatar {
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid var(--accent);
   padding: 0;
   cursor: pointer;
   position: relative;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow:
-    0 0 0 1px rgba(0, 122, 255, 0.1),
-    0 2px 8px rgba(0, 122, 255, 0.2);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 

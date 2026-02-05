@@ -1,7 +1,8 @@
 import { format } from 'date-fns'
-import { ru } from 'date-fns/locale'
+import { enUS, ru } from 'date-fns/locale'
 import { Note } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
+import { useI18n } from '../i18n'
 
 interface NoteCardProps {
   note: Note
@@ -12,6 +13,7 @@ interface NoteCardProps {
 
 export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => {
   const { hapticImpact } = useTelegram()
+  const { language } = useI18n()
 
   // Check if has images
   const hasImages = note.images && note.images.length > 0
@@ -24,19 +26,20 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
 
   // Get subtitle - remaining content
   const subtitle = note.summary
-    ? note.summary.split('\n').slice(1).join(' ').slice(0, 80)
-    : note.content.split('\n').slice(1).join(' ').slice(0, 80)
+    ? note.summary.trim().slice(0, 120)
+    : note.content.trim().slice(0, 120)
 
   // Format date like Apple Notes
   const date = new Date(note.created_at)
   const today = new Date()
   const isToday = date.toDateString() === today.toDateString()
 
+  const locale = language === 'ru' ? ru : enUS
   let formattedDate: string
   if (isToday) {
     formattedDate = format(date, 'HH:mm')
   } else {
-    formattedDate = format(date, 'dd.MM.yyyy', { locale: ru })
+    formattedDate = format(date, 'd MMM', { locale })
   }
 
   const handleClick = () => {
@@ -50,13 +53,13 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
       onClick={handleClick}
       style={{
         backgroundColor: 'var(--bg-secondary)',
-        borderTopLeftRadius: isFirst ? '12px' : 0,
-        borderTopRightRadius: isFirst ? '12px' : 0,
-        borderBottomLeftRadius: isLast ? '12px' : 0,
-        borderBottomRightRadius: isLast ? '12px' : 0,
+        borderTopLeftRadius: isFirst ? '8px' : 0,
+        borderTopRightRadius: isFirst ? '8px' : 0,
+        borderBottomLeftRadius: isLast ? '8px' : 0,
+        borderBottomRightRadius: isLast ? '8px' : 0,
       }}
     >
-      <div className="px-4 py-3">
+      <div className="p-4">
         {/* Title with image indicator */}
         <div className="flex items-center gap-2">
           {hasImages && (
@@ -81,19 +84,19 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
           >
             {title || 'Без названия'}
           </h3>
-        </div>
-
-        {/* Subtitle line */}
-        <div className="flex items-center gap-2 mt-0.5">
           <span
-            className="text-sm"
-            style={{ color: 'var(--text-secondary)' }}
+            className="text-sm font-medium"
+            style={{ color: 'var(--text-primary)' }}
           >
             {formattedDate}
           </span>
+        </div>
+
+        {/* Subtitle line */}
+        <div className="flex items-center gap-2 mt-1.5">
           {subtitle && (
             <span
-              className="text-sm truncate flex-1"
+              className="text-sm line-clamp-2 flex-1 first-letter:uppercase"
               style={{ color: 'var(--text-secondary)' }}
             >
               {subtitle}
@@ -109,17 +112,6 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
           )}
         </div>
       </div>
-
-      {/* Separator */}
-      {!isLast && (
-        <div
-          className="ml-4"
-          style={{
-            height: '1px',
-            backgroundColor: 'var(--separator)'
-          }}
-        />
-      )}
     </div>
   )
 }

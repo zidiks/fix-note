@@ -25,7 +25,8 @@ export default {
         }
       },
       fontFamily: {
-        'sf': ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'SF Pro Display', 'system-ui', 'sans-serif'],
+        'sans': ['"PT Root UI"', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'SF Pro Display', 'system-ui', 'sans-serif'],
+        'sf': ['"PT Root UI"', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'SF Pro Display', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         'ios': '10px',

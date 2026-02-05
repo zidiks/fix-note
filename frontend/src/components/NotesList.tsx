@@ -155,7 +155,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
 
   // Grouped notes list - Apple Notes style
   return (
-    <div className="pt-4 mb-20">
+    <div className="pt-6 mb-20">
       <AnimatePresence mode="popLayout">
         {groupedNotes.map((group, groupIndex) => (
           <DateGroup

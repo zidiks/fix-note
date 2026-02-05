@@ -19,8 +19,8 @@ export const DateGroup = ({ label, notes, groupIndex, onSelectNote }: DateGroupP
     >
       {/* Section header - Apple Notes style */}
       <h2 
-        className="text-xl font-bold px-4 mb-2"
-        style={{ color: 'var(--text-primary)' }}
+        className="text-[15px] font-medium px-4 mb-2 ml-4"
+        style={{ color: 'var(--text-secondary)' }}
       >
         {label}
       </h2>

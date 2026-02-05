@@ -302,7 +302,7 @@ function App() {
             >
               <div className="px-4 py-3 flex items-center justify-between">
                 <h1
-                  className="text-2xl font-bold"
+                  className="text-[22px] font-bold"
                   style={{ color: 'var(--text-primary)' }}
                 >
                   {t('notes')}
