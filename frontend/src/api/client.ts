@@ -23,6 +23,7 @@ export interface Note {
   id: string
   user_id: string
   content: string
+  title: string | null
   summary: string | null
   source: 'voice' | 'text' | 'photo'
   duration_seconds: number | null
@@ -33,6 +34,7 @@ export interface Note {
 
 export interface NoteCreate {
   content: string
+  title?: string
   summary?: string
   source?: 'voice' | 'text'
   duration_seconds?: number
@@ -40,6 +42,7 @@ export interface NoteCreate {
 
 export interface NoteUpdate {
   content?: string
+  title?: string
   summary?: string
 }
 
@@ -72,6 +75,7 @@ export interface SharedNoteResponse {
   note: {
     id: string
     content: string
+    title: string | null
     summary: string | null
     source: 'voice' | 'text' | 'photo'
     duration_seconds: number | null

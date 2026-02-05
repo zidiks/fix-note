@@ -306,6 +306,12 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const hasImages = note.images && note.images.length > 0
   const icon = hasImages ? '🖼️' : isVoice ? '🎤' : '📝'
 
+  // Display title: AI-generated or first line of summary/content
+  const displayTitle = note.title?.trim() ||
+    (note.summary ? note.summary.split('\n')[0].trim() : null) ||
+    note.content.split('\n')[0].trim() ||
+    null
+
   // Extract URLs from content
   const urls = useMemo(() => extractUrls(note.content), [note.content])
 
@@ -571,6 +577,16 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         {/* Images gallery - show at the top if there are images */}
         {hasImages && !isEditing && (
           <ImageGallery images={note.images!} />
+        )}
+
+        {/* Title */}
+        {displayTitle && (
+          <h1
+            className="text-xl font-semibold mb-4 leading-tight"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {displayTitle}
+          </h1>
         )}
 
         {/* Meta info */}

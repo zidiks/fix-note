@@ -75,6 +75,8 @@ class NotesService:
             "source": note_data.source,
             "duration_seconds": note_data.duration_seconds,
         }
+        if note_data.title is not None:
+            data["title"] = note_data.title
         # Only include images if provided and not empty
         # This handles cases where the column might not exist yet
         if note_data.images:
@@ -84,10 +86,16 @@ class NotesService:
             result = self.client.table("notes").insert(data).execute()
             return Note(**result.data[0])
         except Exception as e:
-            # If error is about missing images column, retry without it
-            if "images" in str(e).lower() and "column" in str(e).lower():
+            err = str(e).lower()
+            # If error is about missing column, retry without it
+            if "images" in err and "column" in err:
                 logger.warning(f"Images column not found, retrying without images: {e}")
                 data.pop("images", None)
+                result = self.client.table("notes").insert(data).execute()
+                return Note(**result.data[0])
+            if "title" in err and "column" in err:
+                logger.warning(f"Title column not found, retrying without title: {e}")
+                data.pop("title", None)
                 result = self.client.table("notes").insert(data).execute()
                 return Note(**result.data[0])
             raise

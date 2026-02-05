@@ -37,6 +37,7 @@ class Note(BaseModel):
     id: UUID
     user_id: UUID
     content: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"  # 'voice' | 'text' | 'photo'
     duration_seconds: Optional[int] = None
@@ -51,6 +52,7 @@ class PublicNote(BaseModel):
     """Public note model (limited fields)."""
     id: UUID
     content: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"
     duration_seconds: Optional[int] = None
@@ -61,6 +63,7 @@ class PublicNote(BaseModel):
 class NoteCreate(BaseModel):
     """Note creation model."""
     content: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"
     duration_seconds: Optional[int] = None
@@ -70,6 +73,7 @@ class NoteCreate(BaseModel):
 class NoteUpdate(BaseModel):
     """Note update model."""
     content: Optional[str] = None
+    title: Optional[str] = None
     summary: Optional[str] = None
 
 

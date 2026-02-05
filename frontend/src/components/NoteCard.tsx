@@ -19,10 +19,11 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
   const hasImages = note.images && note.images.length > 0
   const imageCount = note.images?.length || 0
 
-  // Get title - first line or summary
-  const title = note.summary
-    ? note.summary.split('\n')[0].slice(0, 50)
-    : note.content.split('\n')[0].slice(0, 50)
+  // Get title - AI-generated title, or first line of summary/content
+  const title = note.title?.trim() ||
+    (note.summary ? note.summary.split('\n')[0].slice(0, 50) : null) ||
+    note.content.split('\n')[0].slice(0, 50) ||
+    'Без названия'
 
   // Get subtitle - remaining content
   const subtitle = note.summary
@@ -79,10 +80,10 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
             </span>
           )}
           <h3
-            className="font-semibold text-base leading-tight truncate flex-1"
+            className="font-semibold text-base leading-tight truncate flex-1 first-letter:uppercase"
             style={{ color: 'var(--text-primary)' }}
           >
-            {title || 'Без названия'}
+            {title}
           </h3>
           <span
             className="text-sm font-medium"
@@ -96,7 +97,7 @@ export const NoteCard = ({ note, onSelect, isFirst, isLast }: NoteCardProps) => 
         <div className="flex items-center gap-2 mt-1.5">
           {subtitle && (
             <span
-              className="text-sm line-clamp-2 flex-1 first-letter:uppercase"
+              className="text-sm line-clamp-2 leading-4 flex-1 first-letter:uppercase"
               style={{ color: 'var(--text-secondary)' }}
             >
               {subtitle}

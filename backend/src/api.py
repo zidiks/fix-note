@@ -427,9 +427,11 @@ async def get_shared_note(
     public_note = PublicNote(
         id=note.id,
         content=note.content,
+        title=note.title,
         summary=note.summary,
         source=note.source,
         duration_seconds=note.duration_seconds,
+        images=getattr(note, "images", []) or [],
         created_at=note.created_at
     )
     

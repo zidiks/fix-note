@@ -127,10 +127,10 @@ class NotionClient:
                 title_property_name = prop_name
                 break
         
-        # Create title from content (first 100 chars)
+        # Use AI-generated title or first 100 chars of content
         content = note_data.get("content", "")
-        title = content[:100]
-        if len(content) > 100:
+        title = (note_data.get("title") or "").strip() or content[:100]
+        if not note_data.get("title") and len(content) > 100:
             title += "..."
         
         summary = note_data.get("summary", "") or ""
@@ -207,10 +207,10 @@ class NotionClient:
                 break
         
         content = note_data.get("content", "")
-        title = content[:100]
-        if len(content) > 100:
+        title = (note_data.get("title") or "").strip() or content[:100]
+        if not note_data.get("title") and len(content) > 100:
             title += "..."
-        
+
         # Update only the title property
         properties = {
             title_property_name: {"title": [{"text": {"content": title}}]},
@@ -691,6 +691,7 @@ class SyncService:
             note_data = {
                 "id": note["id"],
                 "content": note["content"],
+                "title": note.get("title"),
                 "summary": note.get("summary"),
                 "source": note.get("source", "text"),
                 "created_at": note["created_at"],

@@ -140,6 +140,11 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
   const hasImages = note.images && note.images.length > 0
   const icon = hasImages ? '🖼️' : isVoice ? '🎤' : '📝'
 
+  const displayTitle = note.title?.trim() ||
+    (note.summary ? note.summary.split('\n')[0].trim() : null) ||
+    note.content.split('\n')[0].trim() ||
+    null
+
   const date = new Date(note.created_at)
   const formattedDate = format(date, "d MMMM yyyy 'в' HH:mm", { locale: ru })
 
@@ -194,6 +199,16 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
       <main className="px-4 pb-8 safe-area-bottom">
         {/* Images gallery */}
         {hasImages && <SharedImageGallery images={note.images!} />}
+
+        {/* Title */}
+        {displayTitle && (
+          <h1
+            className="text-xl font-semibold mb-4 leading-tight"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {displayTitle}
+          </h1>
+        )}
 
         {/* Meta info */}
         <div className="flex items-center gap-3 mb-4">

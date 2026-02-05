@@ -20,6 +20,7 @@ export type Database = {
           images: string[] | null
           source: string | null
           summary: string | null
+          title: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -32,6 +33,7 @@ export type Database = {
           images?: string[] | null
           source?: string | null
           summary?: string | null
+          title?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -44,6 +46,7 @@ export type Database = {
           images?: string[] | null
           source?: string | null
           summary?: string | null
+          title?: string | null
           updated_at?: string | null
           user_id?: string | null
         }

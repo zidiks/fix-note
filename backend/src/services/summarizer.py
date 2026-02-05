@@ -1,5 +1,6 @@
+import json
 import logging
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from openai import AsyncOpenAI
 
 from ..config import settings
@@ -15,6 +16,14 @@ SUMMARY_SYSTEM_PROMPT = """Ты — AI-ассистент для создани�
 3. Используй тот же язык, что и в оригинале
 4. Не добавляй информацию, которой нет в тексте
 5. Начинай сразу с саммари, без вступлений типа "В этой заметке..."
+"""
+
+TITLE_AND_SUMMARY_SYSTEM_PROMPT = """Ты — AI-ассистент для заметок. Твоя задача — по тексту заметки выдать:
+1. title — короткий заголовок (одна строка, до 60 символов), отражающий суть. Без кавычек и точки в конце.
+2. summary — краткое саммари на 2-3 предложения (если текст длинный). Для очень короткого текста можно повторить или слегка переформулировать.
+
+Ответь строго в формате JSON, один объект с полями "title" и "summary". Пример: {"title": "Заголовок заметки", "summary": "Краткое содержание..."}
+Язык title и summary — тот же, что и в тексте.
 """
 
 RAG_SYSTEM_PROMPT = """Ты — AI-ассистент, который отвечает на вопросы пользователя на основе его заметок.
@@ -71,7 +80,53 @@ class SummarizerService:
         except Exception as e:
             logger.error(f"Summarization error: {e}")
             return None
-    
+
+    async def summarize_with_title(self, text: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Create a title and summary for the text in one API call.
+
+        Args:
+            text: Text to process (note content)
+
+        Returns:
+            Tuple of (title, summary). Either or both may be None if failed or text too short.
+        """
+        if not text or len(text.strip()) < 10:
+            return None, None
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": TITLE_AND_SUMMARY_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Текст заметки:\n\n{text[:8000]}"}
+                ],
+                max_tokens=600,
+                temperature=0.3
+            )
+            raw = response.choices[0].message.content
+            if not raw:
+                return None, None
+
+            # Parse JSON (handle optional markdown code block)
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            data = json.loads(raw)
+            title = (data.get("title") or "").strip() or None
+            summary = (data.get("summary") or "").strip() or None
+            if title and len(title) > 120:
+                title = title[:117] + "..."
+            logger.info(f"Title and summary created: title={bool(title)}, summary={bool(summary)}")
+            return title, summary
+
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.warning(f"Failed to parse title/summary JSON: {e}")
+            return None, None
+        except Exception as e:
+            logger.error(f"Summarize with title error: {e}")
+            return None, None
+
     async def ask(self, question: str, context_notes: List[dict]) -> str:
         """
         Answer a question based on context from notes.

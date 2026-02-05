@@ -439,19 +439,14 @@ async def handle_voice(message: Message):
         # Track voice usage (in seconds)
         await notes_service.increment_usage(user.id, "voice_seconds", message.voice.duration or 0)
         
-        # Check subscription for summary feature
+        # Check subscription for summary feature (title + summary via DeepSeek)
         can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
         
-        summary = None
+        title, summary = None, None
         if can_summarize:
-            # Update status
-            await status_msg.edit_text("✨ Создаю саммари...")
-            
-            # Generate summary
-            summary = await summarizer_service.summarize(transcription)
-            
-            # Track summary usage
-            if summary:
+            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            title, summary = await summarizer_service.summarize_with_title(transcription)
+            if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
         
         # Save note
@@ -459,6 +454,7 @@ async def handle_voice(message: Message):
             user_id=user.id,
             note_data=NoteCreate(
                 content=transcription,
+                title=title,
                 summary=summary,
                 source="voice",
                 duration_seconds=message.voice.duration
@@ -534,12 +530,22 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
     
     combined_text = "\n\n".join(combined_texts) if combined_texts else "📷 Изображения без текста"
     source = "photo" if image_urls else "text"
-    
+
+    # Generate title (and summary) via DeepSeek when allowed
+    title, summary = None, None
+    can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+    if can_summarize and len(combined_text.strip()) >= 10:
+        title, summary = await summarizer_service.summarize_with_title(combined_text)
+        if title or summary:
+            await notes_service.increment_usage(user.id, "summaries", 1)
+
     # Save as single note
     note = await notes_service.create_note(
         user_id=user.id,
         note_data=NoteCreate(
             content=combined_text,
+            title=title,
+            summary=summary,
             source=source,
             images=image_urls
         )
@@ -595,12 +601,22 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
     
     # Combine captions or use default text
     content = "\n\n".join(captions) if captions else f"📷 {len(image_urls)} изображений"
-    
+
+    # Generate title (and summary) via DeepSeek when allowed
+    title, summary = None, None
+    can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+    if can_summarize and len(content.strip()) >= 10:
+        title, summary = await summarizer_service.summarize_with_title(content)
+        if title or summary:
+            await notes_service.increment_usage(user.id, "summaries", 1)
+
     # Save note
     note = await notes_service.create_note(
         user_id=user.id,
         note_data=NoteCreate(
             content=content,
+            title=title,
+            summary=summary,
             source="photo",
             images=image_urls
         )
@@ -701,18 +717,27 @@ async def handle_text(message: Message):
 
 
 async def save_text_note(message: Message, user, text: str):
-    """Save text as a note."""
+    """Save text as a note. Generate title (and summary) via DeepSeek when allowed."""
+    title, summary = None, None
+    can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+    if can_summarize and len(text.strip()) >= 10:
+        title, summary = await summarizer_service.summarize_with_title(text)
+        if title or summary:
+            await notes_service.increment_usage(user.id, "summaries", 1)
+
     note = await notes_service.create_note(
         user_id=user.id,
         note_data=NoteCreate(
             content=text,
+            title=title,
+            summary=summary,
             source="text"
         )
     )
-    
+
     # Index for RAG
     await rag_service.index_note(str(note.id), text)
-    
+
     await message.answer("✅ Заметка сохранена!")
 
 
