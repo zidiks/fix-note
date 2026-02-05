@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useTelegram } from '../../hooks/useTelegram'
 import { useI18n } from '../../i18n'
