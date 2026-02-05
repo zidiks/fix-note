@@ -1,6 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import clsx from 'clsx'
-import { useI18n } from '../../i18n'
+import { AnimatePresence, motion } from 'framer-motion'
 
 interface NoteActionBarProps {
   isEditing: boolean
@@ -22,14 +20,10 @@ interface NoteActionBarProps {
 
 export const NoteActionBar = ({
   isEditing,
-  isSyncing,
-  canSync,
-  syncStatus,
   isSharing,
   onEdit,
   onSave,
   onCancel,
-  onSync,
   onShare,
   onCopy,
   onDelete,
@@ -37,11 +31,10 @@ export const NoteActionBar = ({
   keyboardHeight,
   viewportOffset,
 }: NoteActionBarProps) => {
-  const { t } = useI18n()
 
   return (
     <motion.div
-      className="fixed left-0 right-0 z-[100] h-[48px] flex items-center justify-center"
+      className="fixed left-0 right-0 z-[100] h-[52px] flex items-center justify-center"
       initial={{ opacity: 0, y: 20 }}
       animate={{
         opacity: 1,
@@ -60,9 +53,9 @@ export const NoteActionBar = ({
       }}
     >
       <motion.div
-        className="liquid-glass--action-bar relative h-[48px] flex items-center justify-center overflow-hidden"
+        className="liquid-glass--action-bar relative h-[52px] flex items-center justify-center overflow-hidden"
         animate={{
-          width: isEditing ? 104 : 268
+          width: isEditing ? 104 : 208
         }}
         transition={{
           duration: 0.3,
@@ -137,29 +130,6 @@ export const NoteActionBar = ({
                     <path d="M6 19C4.34315 19 3 17.6569 3 16V10C3 6.22876 3 4.34315 4.17157 3.17157C5.34315 2 7.22876 2 11 2H15C16.6569 2 18 3.34315 18 5" stroke="currentColor" strokeWidth="1.5"/>
                   </svg>
                 </button>
-
-                {(
-                  <button
-                    onClick={onSync}
-                    disabled={isSyncing}
-                    className={clsx(
-                      `action-bar-button transition easy-in-out ${syncStatus?.synced ? 'action-bar-button--synced' : ''}`,
-                      { 'pointer-events-none opacity-30': !(canSync && syncStatus?.has_integration) }
-                    )}
-                    title={t('syncNote')}
-                  >
-                    {isSyncing ? (
-                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M23 4V10H17"/>
-                        <path d="M1 20V14H7"/>
-                        <path d="M3.51 9A9 9 0 0 1 20.49 9L23 11.5"/>
-                        <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
-                      </svg>
-                    )}
-                  </button>
-                )}
 
                 <button
                   onClick={onEdit}

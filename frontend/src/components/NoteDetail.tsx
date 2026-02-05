@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, ru } from 'date-fns/locale'
@@ -12,7 +12,6 @@ import { LinkPreview, extractUrls } from './ui/LinkPreview'
 import { Toast } from './ui/Toast'
 import { VoicePlayer } from './ui/VoicePlayer'
 import { NoteTabs } from './NoteDetail/NoteTabs'
-import { NoteContentEditor } from './NoteDetail/NoteContentEditor'
 import { NoteActionBar } from './NoteDetail/NoteActionBar'
 
 interface NoteDetailProps {
@@ -36,6 +35,9 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [isSyncing, setIsSyncing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const contentContainerRef = useRef<HTMLDivElement>(null)
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
 
   // Default to summary tab when note has summary, otherwise full text; reset when note changes
   useEffect(() => {
@@ -258,6 +260,128 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     setEditedSummary(note.summary || '')
   }
 
+  // Auto-resize textarea helper
+  const autoResizeTextarea = (textarea: HTMLTextAreaElement) => {
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }
+
+  // Scroll cursor into view when editing
+  const scrollCursorIntoView = (textarea: HTMLTextAreaElement) => {
+    const rect = textarea.getBoundingClientRect()
+    const viewportHeight = window.visualViewport?.height || window.innerHeight
+    const actionBarSpace = 80
+    const availableBottom = viewportHeight - actionBarSpace
+
+    if (rect.bottom > availableBottom) {
+      const scrollAmount = rect.bottom - availableBottom + 20
+      window.scrollBy({ top: scrollAmount, behavior: 'smooth' })
+    }
+  }
+
+  // Calculate content position for animation
+  const [containerWidth, setContainerWidth] = useState(window.innerWidth)
+  
+  useEffect(() => {
+    const updateWidth = () => {
+      if (contentContainerRef.current) {
+        setContainerWidth(contentContainerRef.current.offsetWidth)
+      }
+    }
+    
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+    return () => window.removeEventListener('resize', updateWidth)
+  }, [])
+
+  const contentPosition = useMemo(() => {
+    if (!note.summary || isEditing) return 0
+    const baseOffset = activeTab === 'summary' ? 0 : -containerWidth
+    return baseOffset + swipeOffset
+  }, [note.summary, isEditing, activeTab, swipeOffset, containerWidth])
+
+  // Handle swipe gestures for tab switching with content movement
+  // Use native event listeners with { passive: false } to allow preventDefault
+  useEffect(() => {
+    const container = contentContainerRef.current
+    if (!container || !note.summary || isEditing) return
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+      setSwipeOffset(0)
+    }
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!swipeStartRef.current) return
+      
+      const touch = e.touches[0]
+      const deltaX = touch.clientX - swipeStartRef.current.x
+      const deltaY = Math.abs(touch.clientY - swipeStartRef.current.y)
+      
+      // Only process horizontal swipes
+      if (Math.abs(deltaX) > deltaY && Math.abs(deltaX) > 5) {
+        e.preventDefault()
+        
+        // Calculate offset based on current tab
+        const containerWidth = container.offsetWidth || window.innerWidth
+        let newOffset = deltaX
+        
+        // Limit movement based on active tab
+        if (activeTab === 'summary') {
+          // Can only swipe left (negative offset)
+          newOffset = Math.max(-containerWidth, Math.min(0, deltaX))
+        } else {
+          // Can only swipe right (positive offset)
+          newOffset = Math.max(0, Math.min(containerWidth, deltaX))
+        }
+        
+        setSwipeOffset(newOffset)
+      }
+    }
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!swipeStartRef.current) {
+        setSwipeOffset(0)
+        return
+      }
+
+      const touch = e.changedTouches[0]
+      const deltaX = touch.clientX - swipeStartRef.current.x
+      const deltaY = Math.abs(touch.clientY - swipeStartRef.current.y)
+      const containerWidth = container.offsetWidth || window.innerWidth
+      const threshold = containerWidth * 0.3 // 30% of screen width
+
+      // Only process horizontal swipes
+      if (Math.abs(deltaX) > deltaY) {
+        if (deltaX > threshold && activeTab === 'full') {
+          // Swipe right enough: switch to summary
+          hapticImpact('light')
+          setActiveTab('summary')
+        } else if (deltaX < -threshold && activeTab === 'summary') {
+          // Swipe left enough: switch to full
+          hapticImpact('light')
+          setActiveTab('full')
+        }
+      }
+
+      // Reset offset
+      swipeStartRef.current = null
+      setSwipeOffset(0)
+    }
+
+    // Add event listeners with { passive: false } for touchmove to allow preventDefault
+    container.addEventListener('touchstart', handleTouchStart, { passive: true })
+    container.addEventListener('touchmove', handleTouchMove, { passive: false })
+    container.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart)
+      container.removeEventListener('touchmove', handleTouchMove)
+      container.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [note.summary, isEditing, activeTab, hapticImpact])
+
 
   return (
     <motion.div
@@ -320,17 +444,72 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           hasSummary={!!note.summary}
         />
 
-        {/* Tab content */}
-        <NoteContentEditor
-          content={note.content}
-          summary={note.summary}
-          isEditing={isEditing}
-          activeTab={activeTab}
-          editedContent={editedContent}
-          editedSummary={editedSummary}
-          onContentChange={setEditedContent}
-          onSummaryChange={setEditedSummary}
-        />
+        {/* Tab content with swipe gesture support and horizontal movement */}
+        <div
+          ref={contentContainerRef}
+          className="relative overflow-hidden"
+          style={{ touchAction: 'pan-y' }}
+        >
+          <motion.div
+            className="flex"
+            animate={{
+              x: contentPosition
+            }}
+            transition={{
+              type: swipeOffset === 0 ? 'spring' : 'tween',
+              stiffness: 300,
+              damping: 30,
+              duration: swipeOffset === 0 ? undefined : 0
+            }}
+            style={{
+              width: note.summary ? '200%' : '100%',
+            }}
+          >
+            {/* Summary tab content */}
+            {note.summary && (
+              <div className="w-1/2 flex-shrink-0 px-5">
+                {isEditing ? (
+                  <textarea
+                    value={editedSummary}
+                    onChange={(e) => {
+                      setEditedSummary(e.target.value)
+                      autoResizeTextarea(e.target)
+                      scrollCursorIntoView(e.target)
+                    }}
+                    className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)]"
+                    style={{ scrollMarginBottom: 100 }}
+                    placeholder={t('noSummary')}
+                  />
+                ) : (
+                  <p className="text-base leading-relaxed whitespace-pre-wrap selectable-text text-[var(--text-primary)]">
+                    {note.summary}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Full text tab content */}
+            <div className={note.summary ? "w-1/2 flex-shrink-0 px-5" : "w-full px-5"}>
+              {isEditing ? (
+                <textarea
+                  value={editedContent}
+                  onChange={(e) => {
+                    setEditedContent(e.target.value)
+                    autoResizeTextarea(e.target)
+                    scrollCursorIntoView(e.target)
+                  }}
+                  className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)]"
+                  style={{ scrollMarginBottom: 100 }}
+                  placeholder="Введите текст заметки..."
+                />
+              ) : (
+                <p className="text-base leading-relaxed whitespace-pre-wrap selectable-text text-[var(--text-primary)]">
+                  {note.content}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        </div>
 
         {/* Link previews */}
         {urls.length > 0 && !isEditing && (
