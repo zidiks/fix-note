@@ -44,7 +44,11 @@ RETURNS TABLE (
     id UUID,
     content TEXT,
     summary TEXT,
+    title TEXT,
     source VARCHAR(10),
+    duration_seconds INTEGER,
+    images TEXT[],
+    voice_url TEXT,
     created_at TIMESTAMPTZ,
     rank FLOAT
 )
@@ -56,7 +60,11 @@ BEGIN
         n.id,
         n.content,
         n.summary,
+        n.title,
         n.source,
+        n.duration_seconds,
+        COALESCE(n.images, ARRAY[]::TEXT[]) AS images,
+        n.voice_url,
         n.created_at,
         ts_rank(
             to_tsvector('russian', COALESCE(n.content, '') || ' ' || COALESCE(n.summary, '')),

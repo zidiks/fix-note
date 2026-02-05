@@ -63,6 +63,7 @@ export interface FTSSearchResult {
   source: 'voice' | 'text' | 'photo'
   duration_seconds: number | null
   images: string[] | null
+  voice_url: string | null
   created_at: string
   rank: number
 }

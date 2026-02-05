@@ -80,6 +80,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                       source: result.source || 'text',
                       duration_seconds: result.duration_seconds,
                       images: result.images || null,
+                      voice_url: result.voice_url || null,
                       created_at: result.created_at,
                       updated_at: result.created_at,
                     })

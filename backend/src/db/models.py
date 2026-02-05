@@ -99,10 +99,12 @@ class FTSSearchResult(BaseModel):
     """Full-text search result model."""
     id: UUID
     content: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"
     duration_seconds: Optional[int] = None
     images: List[str] = []
+    voice_url: Optional[str] = None
     created_at: datetime
     rank: float
 
