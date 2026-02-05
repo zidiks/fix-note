@@ -94,6 +94,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                       id: result.id,
                       user_id: '',
                       content: result.content,
+                      title: result.title ?? null,
                       summary: result.summary,
                       source: result.source || 'text',
                       duration_seconds: result.duration_seconds,

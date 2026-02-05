@@ -57,6 +57,7 @@ export interface SearchResult {
 export interface FTSSearchResult {
   id: string
   content: string
+  title: string | null
   summary: string | null
   source: 'voice' | 'text' | 'photo'
   duration_seconds: number | null
