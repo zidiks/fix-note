@@ -38,6 +38,8 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [swipeOffset, setSwipeOffset] = useState(0)
   const contentContainerRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const summaryBlockRef = useRef<HTMLTextAreaElement>(null)
+  const fullContentBlockRef = useRef<HTMLTextAreaElement>(null)
 
   // Default to summary tab when note has summary, otherwise full text; reset when note changes
   useEffect(() => {
@@ -266,6 +268,18 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     textarea.style.height = `${textarea.scrollHeight}px`
   }
 
+  // When not editing, expand textareas to full content height so nothing is squeezed
+  useEffect(() => {
+    if (isEditing) return
+    const expand = (el: HTMLTextAreaElement | null) => {
+      if (!el) return
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }
+    expand(summaryBlockRef.current)
+    expand(fullContentBlockRef.current)
+  }, [isEditing, editedContent, editedSummary, note.content, note.summary])
+
   // Scroll cursor into view when editing
   const scrollCursorIntoView = (textarea: HTMLTextAreaElement) => {
     const rect = textarea.getBoundingClientRect()
@@ -295,10 +309,31 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   }, [])
 
   const contentPosition = useMemo(() => {
-    if (!note.summary || isEditing) return 0
+    if (!note.summary) return 0
     const baseOffset = activeTab === 'summary' ? 0 : -containerWidth
-    return baseOffset + swipeOffset
+    return isEditing ? baseOffset : baseOffset + swipeOffset
   }, [note.summary, isEditing, activeTab, swipeOffset, containerWidth])
+
+  const renderLinkPreviews = () => {
+    if (urls.length === 0 || isEditing) return null
+
+    return (
+      <div className="mt-6">
+        <h3 className="text-xs font-semibold uppercase mb-2 text-[var(--text-secondary)]">
+          Ссылки ({urls.length})
+        </h3>
+        <div className="space-y-2">
+          {urls.map((url, index) => (
+            <LinkPreview
+              key={index}
+              url={url}
+              onClick={() => hapticImpact('light')}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   // Handle swipe gestures for tab switching with content movement
   // Use native event listeners with { passive: false } to allow preventDefault
@@ -404,7 +439,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       {/* Content */}
       <main
-        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto overflow-x-hidden"
+        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto overflow-x-hidden flex flex-col min-h-screen"
         style={{
           paddingBottom: isEditing && keyboardHeight > 0
             ? keyboardHeight + 80
@@ -424,7 +459,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         </p>
 
         {/* Voice Player - show for voice notes with voice_url */}
-        {isVoice && note.voice_url && note.duration_seconds && !isEditing && (
+        {isVoice && note.voice_url && note.duration_seconds && (
           <VoicePlayer
             voiceUrl={note.voice_url}
             duration={note.duration_seconds}
@@ -447,11 +482,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         {/* Tab content with swipe gesture support and horizontal movement */}
         <div
           ref={contentContainerRef}
-          className="relative overflow-hidden"
+          className="relative overflow-hidden flex-1"
           style={{ touchAction: 'pan-y' }}
         >
           <motion.div
-            className="flex"
+            className="flex min-h-full"
             animate={{
               x: contentPosition
             }}
@@ -465,69 +500,53 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
               width: note.summary ? '200%' : '100%',
             }}
           >
-            {/* Summary tab content */}
+            {/* Summary tab content — single editable block, readOnly when not editing */}
             {note.summary && (
-              <div className="w-1/2 flex-shrink-0 px-5">
-                {isEditing ? (
-                  <textarea
-                    value={editedSummary}
-                    onChange={(e) => {
-                      setEditedSummary(e.target.value)
-                      autoResizeTextarea(e.target)
-                      scrollCursorIntoView(e.target)
-                    }}
-                    className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)]"
-                    style={{ scrollMarginBottom: 100 }}
-                    placeholder={t('noSummary')}
-                  />
-                ) : (
-                  <p className="text-base leading-relaxed whitespace-pre-wrap selectable-text text-[var(--text-primary)]">
-                    {note.summary}
-                  </p>
-                )}
-              </div>
-            )}
-            
-            {/* Full text tab content */}
-            <div className={note.summary ? "w-1/2 flex-shrink-0 px-5" : "w-full px-5"}>
-              {isEditing ? (
+              <div className="w-1/2 flex-shrink-0 px-5 flex flex-col min-h-full">
                 <textarea
-                  value={editedContent}
+                  ref={summaryBlockRef}
+                  readOnly={!isEditing}
+                  tabIndex={isEditing ? 0 : -1}
+                  value={editedSummary}
                   onChange={(e) => {
-                    setEditedContent(e.target.value)
+                    setEditedSummary(e.target.value)
                     autoResizeTextarea(e.target)
                     scrollCursorIntoView(e.target)
                   }}
-                  className="w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)]"
+                  className={`w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)] whitespace-pre-wrap ${
+                    !isEditing ? 'cursor-default' : ''
+                  }`}
                   style={{ scrollMarginBottom: 100 }}
-                  placeholder="Введите текст заметки..."
+                  placeholder={t('noSummary')}
+                  aria-readonly={!isEditing}
                 />
-              ) : (
-                <p className="text-base leading-relaxed whitespace-pre-wrap selectable-text text-[var(--text-primary)]">
-                  {note.content}
-                </p>
-              )}
+                {renderLinkPreviews()}
+              </div>
+            )}
+            
+            {/* Full text tab content — single editable block, readOnly when not editing */}
+            <div className={note.summary ? "w-1/2 flex-shrink-0 px-5 flex flex-col min-h-full" : "w-full px-5 flex flex-col min-h-full"}>
+              <textarea
+                ref={fullContentBlockRef}
+                readOnly={!isEditing}
+                tabIndex={isEditing ? 0 : -1}
+                value={editedContent}
+                onChange={(e) => {
+                  setEditedContent(e.target.value)
+                  autoResizeTextarea(e.target)
+                  scrollCursorIntoView(e.target)
+                }}
+                className={`w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)] whitespace-pre-wrap ${
+                  !isEditing ? 'cursor-default' : ''
+                }`}
+                style={{ scrollMarginBottom: 100 }}
+                placeholder="Введите текст заметки..."
+                aria-readonly={!isEditing}
+              />
+              {renderLinkPreviews()}
             </div>
           </motion.div>
         </div>
-
-        {/* Link previews */}
-        {urls.length > 0 && !isEditing && (
-          <div className="mt-6 px-5">
-            <h3 className="text-xs font-semibold uppercase mb-2 text-[var(--text-secondary)]">
-              Ссылки ({urls.length})
-            </h3>
-            <div className="space-y-2">
-              {urls.map((url, index) => (
-                <LinkPreview
-                  key={index}
-                  url={url}
-                  onClick={() => hapticImpact('light')}
-                />
-              ))}
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Bottom fade gradient */}
