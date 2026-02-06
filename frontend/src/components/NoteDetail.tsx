@@ -75,7 +75,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  // Handle iOS keyboard using visualViewport API (same as SearchBar)
+  // iOS keyboard handling via visualViewport API (same as SearchBar)
   useEffect(() => {
     const viewport = window.visualViewport
     if (!viewport) return
@@ -84,9 +84,10 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       const windowHeight = window.innerHeight
       const viewportHeight = viewport.height
       const newKeyboardHeight = windowHeight - viewportHeight - viewport.offsetTop
-
+      
       if (newKeyboardHeight > 100) {
         setKeyboardHeight(newKeyboardHeight)
+        // On iOS, fix body height to visual viewport so position:fixed works correctly
         document.body.style.height = `${viewportHeight}px`
         document.body.style.overflow = 'hidden'
       } else {

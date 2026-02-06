@@ -34,13 +34,14 @@ export const NoteActionBar = ({
     <motion.div
       className="fixed left-0 right-0 z-[100] h-[52px] flex items-center justify-center"
       initial={{ opacity: 0, y: 20 }}
-      animate={{
-        opacity: 1,
+      animate={{ 
+        opacity: 1, 
         y: 0,
-        // Same pattern as SearchBar: control position via bottom property
+        // On iOS: position:fixed is relative to layout viewport, so we need to override bottom
+        // Same pattern as SearchBar
         bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
       }}
-      transition={{
+      transition={{ 
         duration: 0.25,
         ease: [0.25, 0.46, 0.45, 0.94]
       }}
