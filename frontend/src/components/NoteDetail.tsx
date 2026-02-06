@@ -36,10 +36,8 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
   const [swipeOffset, setSwipeOffset] = useState(0)
-  const [useEnvKeyboardInset, setUseEnvKeyboardInset] = useState(false)
   const contentContainerRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
-  const layoutViewportHeightRef = useRef(window.innerHeight)
   const summaryBlockRef = useRef<HTMLTextAreaElement>(null)
   const fullContentBlockRef = useRef<HTMLTextAreaElement>(null)
   const cursorMirrorRef = useRef<HTMLDivElement | null>(null)
@@ -77,42 +75,23 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
+  // iOS workaround from https://mathix.dev/blog/fix-html-elements-on-top-of-the-ios-keyboard-using-html-css-js
   const updateKeyboardMetrics = useCallback(() => {
-    const viewport = window.visualViewport
-    if (!viewport || viewport.height === 0) return
+    const vv = window.visualViewport
+    if (!vv || vv.height === 0) return
 
-    const layoutHeight = layoutViewportHeightRef.current || window.innerHeight
-    const newKeyboardHeight = Math.max(0, layoutHeight - viewport.height - viewport.offsetTop)
+    const ih = window.innerHeight
+    // Exact formula from the guide
+    const offset = Math.max(0, ih - vv.height - vv.offsetTop)
 
-    if (newKeyboardHeight > 100) {
-      setKeyboardHeight(newKeyboardHeight)
-      // On iOS, fix body height to visual viewport so position:fixed works correctly
-      document.body.style.height = `${viewport.height}px`
-      document.body.style.overflow = 'hidden'
+    if (offset > 100) {
+      setKeyboardHeight(offset)
     } else {
       setKeyboardHeight(0)
-      document.body.style.height = ''
-      document.body.style.overflow = ''
-      layoutViewportHeightRef.current = window.innerHeight
     }
   }, [])
 
-  useEffect(() => {
-    const virtualKeyboard = (navigator as Navigator & { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard
-    if (virtualKeyboard) {
-      virtualKeyboard.overlaysContent = true
-      setUseEnvKeyboardInset(true)
-    }
-  }, [])
 
-  const keyboardOffsetCss = useMemo(
-    () => (useEnvKeyboardInset ? 'env(keyboard-inset-height, 0px)' : `${keyboardHeight}px`),
-    [useEnvKeyboardInset, keyboardHeight]
-  )
-  const contentBottomPadding = useMemo(
-    () => `calc(100px + env(safe-area-inset-bottom, 0px) + ${keyboardOffsetCss})`,
-    [keyboardOffsetCss]
-  )
 
   // iOS keyboard handling via visualViewport API (same as SearchBar)
   useEffect(() => {
@@ -688,7 +667,6 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             onDelete={onDelete ? handleDelete : undefined}
             isSaving={updateMutation.isPending}
             keyboardHeight={keyboardHeight}
-            useEnvKeyboardInset={useEnvKeyboardInset}
           />
         </>,
         document.body

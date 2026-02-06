@@ -15,7 +15,6 @@ interface NoteActionBarProps {
   onDelete?: () => void
   isSaving: boolean
   keyboardHeight: number
-  useEnvKeyboardInset?: boolean
 }
 
 export const NoteActionBar = ({
@@ -29,11 +28,7 @@ export const NoteActionBar = ({
   onDelete,
   isSaving,
   keyboardHeight,
-  useEnvKeyboardInset = false,
 }: NoteActionBarProps) => {
-  const keyboardOffset = useEnvKeyboardInset
-    ? 'env(keyboard-inset-height, 0px)'
-    : `${keyboardHeight}px`
 
   return (
     <motion.div
@@ -49,7 +44,10 @@ export const NoteActionBar = ({
       }}
       style={{
         position: 'fixed',
-        bottom: `calc(12px + env(safe-area-inset-bottom, 0px) + ${keyboardOffset})`,
+        // iOS workaround: use calculated keyboard offset
+        bottom: keyboardHeight > 0 
+          ? `${keyboardHeight + 12}px`
+          : `calc(12px + env(safe-area-inset-bottom, 0px))`,
         transition: 'bottom 0.25s ease'
       }}
     >
