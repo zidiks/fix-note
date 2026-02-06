@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { flushSync } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, ru } from 'date-fns/locale'
@@ -38,6 +38,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [swipeOffset, setSwipeOffset] = useState(0)
   const contentContainerRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const layoutViewportHeightRef = useRef(window.innerHeight)
   const summaryBlockRef = useRef<HTMLTextAreaElement>(null)
   const fullContentBlockRef = useRef<HTMLTextAreaElement>(null)
   const cursorMirrorRef = useRef<HTMLDivElement | null>(null)
@@ -75,38 +76,68 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
+  const updateKeyboardMetrics = useCallback(() => {
+    const viewport = window.visualViewport
+    if (!viewport || viewport.height === 0) return
+
+    const layoutHeight = layoutViewportHeightRef.current || window.innerHeight
+    const newKeyboardHeight = Math.max(0, layoutHeight - viewport.height - viewport.offsetTop)
+
+    if (newKeyboardHeight > 100) {
+      setKeyboardHeight(newKeyboardHeight)
+      // On iOS, fix body height to visual viewport so position:fixed works correctly
+      document.body.style.height = `${viewport.height}px`
+      document.body.style.overflow = 'hidden'
+    } else {
+      setKeyboardHeight(0)
+      document.body.style.height = ''
+      document.body.style.overflow = ''
+      layoutViewportHeightRef.current = window.innerHeight
+    }
+  }, [])
+
+  useEffect(() => {
+    const virtualKeyboard = (navigator as Navigator & { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard
+    if (virtualKeyboard) {
+      virtualKeyboard.overlaysContent = true
+    }
+  }, [])
+
   // iOS keyboard handling via visualViewport API (same as SearchBar)
   useEffect(() => {
     const viewport = window.visualViewport
     if (!viewport) return
 
-    const handleResize = () => {
-      const windowHeight = window.innerHeight
-      const viewportHeight = viewport.height
-      const newKeyboardHeight = windowHeight - viewportHeight - viewport.offsetTop
-      
-      if (newKeyboardHeight > 100) {
-        setKeyboardHeight(newKeyboardHeight)
-        // On iOS, fix body height to visual viewport so position:fixed works correctly
-        document.body.style.height = `${viewportHeight}px`
-        document.body.style.overflow = 'hidden'
-      } else {
-        setKeyboardHeight(0)
-        document.body.style.height = ''
-        document.body.style.overflow = ''
+    let timeoutId: number | undefined
+
+    const scheduleUpdate = () => {
+      updateKeyboardMetrics()
+      requestAnimationFrame(updateKeyboardMetrics)
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
       }
+      timeoutId = window.setTimeout(updateKeyboardMetrics, 50)
     }
 
-    viewport.addEventListener('resize', handleResize)
-    viewport.addEventListener('scroll', handleResize)
+    viewport.addEventListener('resize', scheduleUpdate)
+    viewport.addEventListener('scroll', scheduleUpdate)
+    window.addEventListener('focusin', scheduleUpdate)
+    window.addEventListener('focusout', scheduleUpdate)
+    document.addEventListener('gesturechange', scheduleUpdate)
 
     return () => {
-      viewport.removeEventListener('resize', handleResize)
-      viewport.removeEventListener('scroll', handleResize)
+      viewport.removeEventListener('resize', scheduleUpdate)
+      viewport.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('focusin', scheduleUpdate)
+      window.removeEventListener('focusout', scheduleUpdate)
+      document.removeEventListener('gesturechange', scheduleUpdate)
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
       document.body.style.height = ''
       document.body.style.overflow = ''
     }
-  }, [])
+  }, [updateKeyboardMetrics])
 
 
   // Share link mutation - always public
@@ -259,30 +290,17 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   useEffect(() => {
     if (!isEditing) return
 
-    const checkViewport = () => {
-      const viewport = window.visualViewport
-      if (!viewport) return
-      
-      const windowHeight = window.innerHeight
-      const viewportHeight = viewport.height
-      const newKeyboardHeight = windowHeight - viewportHeight - viewport.offsetTop
-      
-      if (newKeyboardHeight > 100) {
-        setKeyboardHeight(newKeyboardHeight)
-        document.body.style.height = `${viewportHeight}px`
-        document.body.style.overflow = 'hidden'
-      }
-    }
+    updateKeyboardMetrics()
 
     // Check every 300ms for 3 seconds
-    const interval = setInterval(checkViewport, 300)
+    const interval = window.setInterval(updateKeyboardMetrics, 300)
     const timeout = setTimeout(() => clearInterval(interval), 3000)
 
     return () => {
       clearInterval(interval)
       clearTimeout(timeout)
     }
-  }, [isEditing])
+  }, [isEditing, updateKeyboardMetrics])
 
   const handleSave = () => {
     hapticImpact('medium')
@@ -633,31 +651,36 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         </div>
       </main>
 
-      {/* Bottom fade gradient - same pattern as SearchBar */}
-      <div 
-        className="bottom-fade"
-        style={{
-          bottom: keyboardHeight > 0 ? keyboardHeight : 0
-        }}
-      />
+      {typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Bottom fade gradient - same pattern as SearchBar */}
+          <div 
+            className="bottom-fade"
+            style={{
+              bottom: `calc(env(keyboard-inset-height, 0px) + ${keyboardHeight}px)`
+            }}
+          />
 
-      {/* Floating action bar */}
-      <NoteActionBar
-        isEditing={isEditing}
-        isSyncing={isSyncing}
-        canSync={canSync}
-        syncStatus={syncStatus}
-        isSharing={isSharing}
-        onEdit={handleEdit}
-        onSave={handleSave}
-        onCancel={handleCancelEdit}
-        onSync={handleSync}
-        onShare={handleShareLink}
-        onCopy={handleCopyText}
-        onDelete={onDelete ? handleDelete : undefined}
-        isSaving={updateMutation.isPending}
-        keyboardHeight={keyboardHeight}
-      />
+          {/* Floating action bar */}
+          <NoteActionBar
+            isEditing={isEditing}
+            isSyncing={isSyncing}
+            canSync={canSync}
+            syncStatus={syncStatus}
+            isSharing={isSharing}
+            onEdit={handleEdit}
+            onSave={handleSave}
+            onCancel={handleCancelEdit}
+            onSync={handleSync}
+            onShare={handleShareLink}
+            onCopy={handleCopyText}
+            onDelete={onDelete ? handleDelete : undefined}
+            isSaving={updateMutation.isPending}
+            keyboardHeight={keyboardHeight}
+          />
+        </>,
+        document.body
+      )}
     </motion.div>
   )
 }

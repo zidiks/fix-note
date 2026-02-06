@@ -36,10 +36,7 @@ export const NoteActionBar = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ 
         opacity: 1, 
-        y: 0,
-        // On iOS: position:fixed is relative to layout viewport, so we need to override bottom
-        // Same pattern as SearchBar
-        bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
+        y: 0
       }}
       transition={{ 
         duration: 0.25,
@@ -47,7 +44,8 @@ export const NoteActionBar = ({
       }}
       style={{
         position: 'fixed',
-        bottom: `calc(12px + env(safe-area-inset-bottom, 0px))`
+        bottom: `calc(12px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px) + ${keyboardHeight}px)`,
+        transition: 'bottom 0.25s ease'
       }}
     >
       <motion.div
