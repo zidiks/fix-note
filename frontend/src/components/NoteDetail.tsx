@@ -254,6 +254,36 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     })
   }
 
+  // Retry mechanism: after entering edit mode, keep checking viewport for 3 seconds
+  // This ensures action bar positions correctly even if keyboard opens slowly
+  useEffect(() => {
+    if (!isEditing) return
+
+    const checkViewport = () => {
+      const viewport = window.visualViewport
+      if (!viewport) return
+      
+      const windowHeight = window.innerHeight
+      const viewportHeight = viewport.height
+      const newKeyboardHeight = windowHeight - viewportHeight - viewport.offsetTop
+      
+      if (newKeyboardHeight > 100) {
+        setKeyboardHeight(newKeyboardHeight)
+        document.body.style.height = `${viewportHeight}px`
+        document.body.style.overflow = 'hidden'
+      }
+    }
+
+    // Check every 300ms for 3 seconds
+    const interval = setInterval(checkViewport, 300)
+    const timeout = setTimeout(() => clearInterval(interval), 3000)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [isEditing])
+
   const handleSave = () => {
     hapticImpact('medium')
     updateMutation.mutate()
