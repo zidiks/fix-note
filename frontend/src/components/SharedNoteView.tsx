@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, ru } from 'date-fns/locale'
@@ -33,6 +33,26 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
       setActiveTab('full')
     }
   }, [data?.note.id, data?.note.summary])
+
+  const note = data?.note
+  const isVoice = note?.source === 'voice'
+  const hasImages = !!note?.images && note.images.length > 0
+
+  // Display title: AI-generated or first line of summary/content
+  const displayTitle = note?.title?.trim() ||
+    (note?.summary ? note.summary.split('\n')[0].trim() : null) ||
+    (note?.content ? note.content.split('\n')[0].trim() : null) ||
+    null
+
+  // Extract URLs from content
+  const urls = note?.content ? extractUrls(note.content) : []
+
+  const formattedDate = note?.created_at ? (() => {
+    const d = new Date(note.created_at)
+    if (isToday(d)) return `${t('today')}, ${format(d, 'HH:mm', { locale })}`
+    if (isYesterday(d)) return `${t('yesterday')}, ${format(d, 'HH:mm', { locale })}`
+    return format(d, 'd MMM', { locale })
+  })() : ''
 
   // Loading state
   if (isLoading) {
@@ -72,25 +92,7 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
     )
   }
 
-  const { note } = data
-  const isVoice = note.source === 'voice'
-  const hasImages = note.images && note.images.length > 0
-
-  // Display title: AI-generated or first line of summary/content
-  const displayTitle = note.title?.trim() ||
-    (note.summary ? note.summary.split('\n')[0].trim() : null) ||
-    note.content.split('\n')[0].trim() ||
-    null
-
-  // Extract URLs from content
-  const urls = useMemo(() => extractUrls(note.content), [note.content])
-
-  const formattedDate = useMemo(() => {
-    const d = new Date(note.created_at)
-    if (isToday(d)) return `${t('today')}, ${format(d, 'HH:mm', { locale })}`
-    if (isYesterday(d)) return `${t('yesterday')}, ${format(d, 'HH:mm', { locale })}`
-    return format(d, 'd MMM', { locale })
-  }, [note.created_at, language, t])
+  const { note: resolvedNote } = data
 
   return (
     <motion.div
@@ -120,34 +122,34 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
         </p>
 
         {/* Voice Player - show for voice notes with voice_url */}
-        {isVoice && note.voice_url && note.duration_seconds && (
+        {isVoice && resolvedNote.voice_url && resolvedNote.duration_seconds && (
           <VoicePlayer
-            voiceUrl={note.voice_url}
-            duration={note.duration_seconds}
+            voiceUrl={resolvedNote.voice_url}
+            duration={resolvedNote.duration_seconds}
             className="px-5"
           />
         )}
 
         {/* Images gallery - show at the top if there are images */}
         {hasImages && (
-          <ImageGallery className="px-5" images={note.images!} />
+          <ImageGallery className="px-5" images={resolvedNote.images!} />
         )}
 
         {/* Tabs: AI Summary | Full Text */}
         <NoteTabs
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          hasSummary={!!note.summary}
+          hasSummary={!!resolvedNote.summary}
         />
 
         {/* Tab content - read-only mode */}
         <NoteContentEditor
-          content={note.content}
-          summary={note.summary}
+          content={resolvedNote.content}
+          summary={resolvedNote.summary}
           isEditing={false}
           activeTab={activeTab}
-          editedContent={note.content}
-          editedSummary={note.summary || ''}
+          editedContent={resolvedNote.content}
+          editedSummary={resolvedNote.summary || ''}
           onContentChange={() => {}}
           onSummaryChange={() => {}}
         />
@@ -185,4 +187,3 @@ export const SharedNoteView = ({ data, isLoading }: SharedNoteViewProps) => {
     </motion.div>
   )
 }
-
