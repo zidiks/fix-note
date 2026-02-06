@@ -15,7 +15,6 @@ interface NoteActionBarProps {
   onDelete?: () => void
   isSaving: boolean
   keyboardHeight: number
-  viewportOffset: number
 }
 
 export const NoteActionBar = ({
@@ -37,19 +36,17 @@ export const NoteActionBar = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{
         opacity: 1,
-        // keyboardHeight formula already accounts for viewportOffset, so no transform needed
-        y: 0
+        y: 0,
+        // Same pattern as SearchBar: control position via bottom property
+        bottom: keyboardHeight > 0 ? keyboardHeight + 12 : undefined
       }}
       transition={{
-        delay: 0.15,
         duration: 0.25,
         ease: [0.25, 0.46, 0.45, 0.94]
       }}
       style={{
         position: 'fixed',
-        bottom: keyboardHeight > 0
-          ? `${keyboardHeight + 12}px`
-          : `calc(12px + env(safe-area-inset-bottom, 0px))`
+        bottom: `calc(12px + env(safe-area-inset-bottom, 0px))`
       }}
     >
       <motion.div

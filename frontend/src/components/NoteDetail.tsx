@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, ru } from 'date-fns/locale'
@@ -31,7 +32,6 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [editedContent, setEditedContent] = useState(note.content)
   const [editedSummary, setEditedSummary] = useState(note.summary || '')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
-  const [viewportOffset, setViewportOffset] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
@@ -75,7 +75,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  // Handle iOS keyboard using visualViewport API
+  // Handle iOS keyboard using visualViewport API (same as SearchBar)
   useEffect(() => {
     const viewport = window.visualViewport
     if (!viewport) return
@@ -83,54 +83,30 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     const handleResize = () => {
       const windowHeight = window.innerHeight
       const viewportHeight = viewport.height
-      const offsetTop = viewport.offsetTop
-      const newKeyboardHeight = windowHeight - viewportHeight - offsetTop
+      const newKeyboardHeight = windowHeight - viewportHeight - viewport.offsetTop
 
       if (newKeyboardHeight > 100) {
         setKeyboardHeight(newKeyboardHeight)
-        setViewportOffset(offsetTop)
         document.body.style.height = `${viewportHeight}px`
         document.body.style.overflow = 'hidden'
       } else {
         setKeyboardHeight(0)
-        setViewportOffset(0)
         document.body.style.height = ''
         document.body.style.overflow = ''
       }
     }
 
-    const handleScroll = () => handleResize()
-
     viewport.addEventListener('resize', handleResize)
-    viewport.addEventListener('scroll', handleScroll)
+    viewport.addEventListener('scroll', handleResize)
 
     return () => {
       viewport.removeEventListener('resize', handleResize)
-      viewport.removeEventListener('scroll', handleScroll)
+      viewport.removeEventListener('scroll', handleResize)
       document.body.style.height = ''
       document.body.style.overflow = ''
     }
   }, [])
 
-  // When entering edit mode, re-check viewport after keyboard opens so action bar positions correctly
-  useEffect(() => {
-    if (!isEditing) return
-    const check = () => {
-      const viewport = window.visualViewport
-      if (!viewport) return
-      const newKeyboardHeight = window.innerHeight - viewport.height - viewport.offsetTop
-      if (newKeyboardHeight > 100) {
-        setKeyboardHeight(newKeyboardHeight)
-        setViewportOffset(viewport.offsetTop)
-      }
-    }
-    const t1 = setTimeout(check, 100)
-    const t2 = setTimeout(check, 350)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-    }
-  }, [isEditing])
 
   // Share link mutation - always public
   const shareMutation = useMutation({
@@ -261,23 +237,21 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
   const handleEdit = () => {
     hapticImpact('light')
-    setEditedContent(note.content)
-    setEditedSummary(note.summary || '')
-    setIsEditing(true)
-  }
-
-  // When entering edit mode, focus the active tab's textarea so the keyboard opens
-  useEffect(() => {
-    if (!isEditing) return
-    const id = setTimeout(() => {
+    // Use flushSync to update state synchronously, then focus immediately in the same user event
+    flushSync(() => {
+      setEditedContent(note.content)
+      setEditedSummary(note.summary || '')
+      setIsEditing(true)
+    })
+    // Focus the active tab's textarea immediately to open keyboard (must be in same event)
+    requestAnimationFrame(() => {
       if (activeTab === 'summary' && note.summary) {
         summaryBlockRef.current?.focus()
       } else {
         fullContentBlockRef.current?.focus()
       }
-    }, 150) // Delay to ensure UI is ready and textarea can receive focus
-    return () => clearTimeout(id)
-  }, [isEditing, activeTab, note.summary])
+    })
+  }
 
   const handleSave = () => {
     hapticImpact('medium')
@@ -627,18 +601,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         </div>
       </main>
 
-      {/* Bottom fade gradient */}
-      <motion.div
+      {/* Bottom fade gradient - same pattern as SearchBar */}
+      <div 
         className="bottom-fade"
-        initial={{ opacity: 0 }}
-        animate={{
-          opacity: 1,
+        style={{
           bottom: keyboardHeight > 0 ? keyboardHeight : 0
-        }}
-        transition={{
-          delay: 0.15,
-          duration: 0.25,
-          ease: [0.25, 0.46, 0.45, 0.94]
         }}
       />
 
@@ -658,7 +625,6 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         onDelete={onDelete ? handleDelete : undefined}
         isSaving={updateMutation.isPending}
         keyboardHeight={keyboardHeight}
-        viewportOffset={viewportOffset}
       />
     </motion.div>
   )
