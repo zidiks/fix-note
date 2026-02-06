@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, type PointerEvent } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { useTelegram } from './hooks/useTelegram'
@@ -42,6 +42,22 @@ function App() {
   const { deleteNote, refetchNotes } = useNotes()
   const { t, setLanguage } = useI18n()
   const { fetchSubscription } = useSubscription()
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const pullStartYRef = useRef(0)
+  const pullDistanceRef = useRef(0)
+  const activePointerIdRef = useRef<number | null>(null)
+  const activeTouchIdRef = useRef<number | null>(null)
+  const hapticTriggeredRef = useRef(false)
+  const isPullingRef = useRef(false)
+  const [pullDistance, setPullDistance] = useState(0)
+  const [isPulling, setIsPulling] = useState(false)
+  const [isPullArmed, setIsPullArmed] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const PULL_THRESHOLD = 90
+  const PULL_MAX = 140
+  const PULL_RESISTANCE = 0.6
+  const INDICATOR_HEIGHT = 56
 
   // Check if opened via share link (start_param)
   const { data: sharedData, isLoading: isLoadingShared } = useQuery({
@@ -234,6 +250,203 @@ function App() {
     }
   }, [colorScheme, themeParams])
 
+  const isPullEnabled = viewState === 'list' && searchQuery.length < 2
+  const pullProgress = Math.min(1, pullDistance / PULL_THRESHOLD)
+
+  useEffect(() => {
+    if (!isPullEnabled) {
+      pullDistanceRef.current = 0
+      setPullDistance(0)
+      isPullingRef.current = false
+      setIsPulling(false)
+      setIsPullArmed(false)
+      setIsRefreshing(false)
+      activePointerIdRef.current = null
+      activeTouchIdRef.current = null
+      hapticTriggeredRef.current = false
+    }
+  }, [isPullEnabled])
+
+  const setPull = (value: number) => {
+    pullDistanceRef.current = value
+    setPullDistance(value)
+  }
+
+  const setPulling = (value: boolean) => {
+    isPullingRef.current = value
+    setIsPulling(value)
+  }
+
+  const handlePullStart = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return
+    if (!isPullEnabled || isRefreshing) return
+    if (event.button !== 0) return
+    if ((listRef.current?.scrollTop ?? 0) > 0) return
+
+    activePointerIdRef.current = event.pointerId
+    pullStartYRef.current = event.clientY
+    hapticTriggeredRef.current = false
+    setPulling(true)
+  }
+
+  const handlePullMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return
+    if (!isPullEnabled || isRefreshing) return
+    if (activePointerIdRef.current !== event.pointerId) return
+    if ((listRef.current?.scrollTop ?? 0) > 0) return
+
+    const delta = event.clientY - pullStartYRef.current
+    if (delta <= 0) {
+      if (pullDistanceRef.current !== 0) {
+        setPull(0)
+      }
+      if (isPullArmed) setIsPullArmed(false)
+      return
+    }
+
+    const distance = Math.min(PULL_MAX, delta * PULL_RESISTANCE)
+    setPull(distance)
+    const armed = distance >= PULL_THRESHOLD
+    setIsPullArmed(armed)
+    if (armed && !hapticTriggeredRef.current) {
+      hapticImpact('medium')
+      hapticTriggeredRef.current = true
+    }
+    if (!armed) {
+      hapticTriggeredRef.current = false
+    }
+  }
+
+  const handlePullEnd = async (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return
+    if (activePointerIdRef.current !== event.pointerId) return
+    activePointerIdRef.current = null
+    setPulling(false)
+
+    if (pullDistanceRef.current >= PULL_THRESHOLD && isPullEnabled && !isRefreshing) {
+      setIsPullArmed(false)
+      setIsRefreshing(true)
+      setPull(PULL_THRESHOLD)
+      try {
+        await refetchNotes()
+      } finally {
+        setIsRefreshing(false)
+        setPull(0)
+      }
+      return
+    }
+
+    setIsPullArmed(false)
+    setPull(0)
+  }
+
+  const handlePullCancel = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return
+    if (activePointerIdRef.current !== event.pointerId) return
+    activePointerIdRef.current = null
+    setPulling(false)
+    setIsPullArmed(false)
+    setPull(0)
+  }
+
+  useEffect(() => {
+    const container = listRef.current
+    if (!container) return
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (!isPullEnabled || isRefreshing) return
+      if ((listRef.current?.scrollTop ?? 0) > 0) return
+      if (activeTouchIdRef.current !== null) return
+
+      const touch = event.touches[0]
+      if (!touch) return
+      activeTouchIdRef.current = touch.identifier
+      pullStartYRef.current = touch.clientY
+      hapticTriggeredRef.current = false
+      setPulling(true)
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!isPullEnabled || isRefreshing) return
+      if (activeTouchIdRef.current === null) return
+
+      const touch = Array.from(event.touches).find(t => t.identifier === activeTouchIdRef.current)
+      if (!touch) return
+      if ((listRef.current?.scrollTop ?? 0) > 0) return
+
+      const delta = touch.clientY - pullStartYRef.current
+      if (delta <= 0) {
+        if (pullDistanceRef.current !== 0) {
+          setPull(0)
+        }
+        if (isPullArmed) setIsPullArmed(false)
+        return
+      }
+
+      event.preventDefault()
+
+      const distance = Math.min(PULL_MAX, delta * PULL_RESISTANCE)
+      setPull(distance)
+      const armed = distance >= PULL_THRESHOLD
+      setIsPullArmed(armed)
+      if (armed && !hapticTriggeredRef.current) {
+        hapticImpact('medium')
+        hapticTriggeredRef.current = true
+      }
+      if (!armed) {
+        hapticTriggeredRef.current = false
+      }
+    }
+
+    const handleTouchEnd = async (event: TouchEvent) => {
+      if (activeTouchIdRef.current === null) return
+      const ended = Array.from(event.changedTouches).some(t => t.identifier === activeTouchIdRef.current)
+      if (!ended) return
+
+      activeTouchIdRef.current = null
+      setPulling(false)
+
+      if (pullDistanceRef.current >= PULL_THRESHOLD && isPullEnabled && !isRefreshing) {
+        setIsPullArmed(false)
+        setIsRefreshing(true)
+        setPull(PULL_THRESHOLD)
+        try {
+          await refetchNotes()
+        } finally {
+          setIsRefreshing(false)
+          setPull(0)
+        }
+        return
+      }
+
+      setIsPullArmed(false)
+      setPull(0)
+    }
+
+    const handleTouchCancel = (event: TouchEvent) => {
+      if (activeTouchIdRef.current === null) return
+      const canceled = Array.from(event.changedTouches).some(t => t.identifier === activeTouchIdRef.current)
+      if (!canceled) return
+
+      activeTouchIdRef.current = null
+      setPulling(false)
+      setIsPullArmed(false)
+      setPull(0)
+    }
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true })
+    container.addEventListener('touchmove', handleTouchMove, { passive: false })
+    container.addEventListener('touchend', handleTouchEnd, { passive: true })
+    container.addEventListener('touchcancel', handleTouchCancel, { passive: true })
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart)
+      container.removeEventListener('touchmove', handleTouchMove)
+      container.removeEventListener('touchend', handleTouchEnd)
+      container.removeEventListener('touchcancel', handleTouchCancel)
+    }
+  }, [isPullEnabled, isRefreshing, isPullArmed, hapticImpact, refetchNotes])
+
   const handleSelectNote = (note: Note) => {
     setSelectedNote(note)
     setViewState('detail')
@@ -371,11 +584,46 @@ function App() {
                 height: '100%',
                 maxHeight: '100%'
               }}
+              ref={listRef}
+              onPointerDown={handlePullStart}
+              onPointerMove={handlePullMove}
+              onPointerUp={handlePullEnd}
+              onPointerCancel={handlePullCancel}
             >
-              <NotesList
-                searchQuery={searchQuery}
-                onSelectNote={handleSelectNote}
-              />
+              <div className="pull-to-refresh">
+                <div
+                  className="pull-indicator"
+                  style={{
+                    transform: `translateY(${pullDistance - INDICATOR_HEIGHT}px)`,
+                    opacity: pullDistance > 0 || isRefreshing ? 1 : 0,
+                    transition: isPulling ? 'none' : 'transform 0.2s ease, opacity 0.2s ease',
+                  }}
+                >
+                  <div
+                    className="pull-indicator__spinner"
+                    style={{
+                      transform: `rotate(${isRefreshing ? 0 : pullProgress * 180}deg) scale(${isRefreshing ? 1 : 0.6 + pullProgress * 0.4})`,
+                      opacity: isRefreshing ? 1 : Math.min(1, 0.2 + pullProgress),
+                      transition: isPulling ? 'none' : 'transform 0.2s ease, opacity 0.2s ease',
+                    }}
+                  >
+                    <div className={`spinner ${isRefreshing ? '' : 'spinner--paused'}`} />
+                  </div>
+                </div>
+
+                <div
+                  className="pull-content"
+                  style={{
+                    transform: `translateY(${pullDistance}px)`,
+                    transition: isPulling ? 'none' : 'transform 0.2s ease',
+                  }}
+                >
+                  <NotesList
+                    searchQuery={searchQuery}
+                    onSelectNote={handleSelectNote}
+                  />
+                </div>
+              </div>
             </main>
 
             {/* Bottom Search Bar - Liquid Glass style */}

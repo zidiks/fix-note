@@ -273,7 +273,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
   const handleEdit = () => {
     hapticImpact('light')
-    
+
     // Use flushSync to update state synchronously, then focus immediately in the same user event
     flushSync(() => {
       setEditedContent(note.content)
@@ -356,7 +356,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
     // Keyboard is opening or open (keyboardHeight > 0)
     const now = Date.now()
-    
+
     // First time keyboard height becomes > 0 - record start time
     if (keyboardOpeningStartTimeRef.current === 0) {
       keyboardOpeningStartTimeRef.current = now
@@ -379,7 +379,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           }, 1100)
         }
       }, remainingDelay)
-      
+
       return () => {
         clearTimeout(delayTimer)
       }
@@ -478,14 +478,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
   // Calculate content position for animation
   const [containerWidth, setContainerWidth] = useState(window.innerWidth)
-  
+
   useEffect(() => {
     const updateWidth = () => {
       if (contentContainerRef.current) {
         setContainerWidth(contentContainerRef.current.offsetWidth)
       }
     }
-    
+
     updateWidth()
     window.addEventListener('resize', updateWidth)
     return () => window.removeEventListener('resize', updateWidth)
@@ -532,19 +532,19 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!swipeStartRef.current) return
-      
+
       const touch = e.touches[0]
       const deltaX = touch.clientX - swipeStartRef.current.x
       const deltaY = Math.abs(touch.clientY - swipeStartRef.current.y)
-      
+
       // Only process horizontal swipes
       if (Math.abs(deltaX) > deltaY && Math.abs(deltaX) > 5) {
         e.preventDefault()
-        
+
         // Calculate offset based on current tab
         const containerWidth = container.offsetWidth || window.innerWidth
         let newOffset = deltaX
-        
+
         // Limit movement based on active tab
         if (activeTab === 'summary') {
           // Can only swipe left (negative offset)
@@ -553,7 +553,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           // Can only swipe right (positive offset)
           newOffset = Math.max(0, Math.min(containerWidth, deltaX))
         }
-        
+
         setSwipeOffset(newOffset)
       }
     }
@@ -621,7 +621,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       </AnimatePresence>
 
       {/* Content — dvh automatically adjusts for keyboard */}
-      <main 
+      <main
         className="pt-4 safe-area-top overflow-x-hidden flex flex-col"
         style={{
           height: '100dvh'
@@ -632,12 +632,12 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           {!isEditing && (
             <motion.div
               initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-              animate={{ 
+              animate={{
                 opacity: 1,
                 height: 'auto',
                 marginBottom: 'auto'
               }}
-              exit={{ 
+              exit={{
                 opacity: 0,
                 height: 0,
                 marginBottom: 0
@@ -651,7 +651,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             >
               {/* Title */}
               {displayTitle && (
-                <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
+                <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words line-clamp-4">
                   {displayTitle}
                 </h1>
               )}
@@ -669,11 +669,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           {isVoice && note.voice_url && note.duration_seconds && !isEditing && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
-              animate={{ 
+              animate={{
                 opacity: 1,
                 height: 'auto'
               }}
-              exit={{ 
+              exit={{
                 opacity: 0,
                 height: 0
               }}
@@ -697,11 +697,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           {hasImages && !isEditing && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
-              animate={{ 
+              animate={{
                 opacity: 1,
                 height: 'auto'
               }}
-              exit={{ 
+              exit={{
                 opacity: 0,
                 height: 0
               }}
