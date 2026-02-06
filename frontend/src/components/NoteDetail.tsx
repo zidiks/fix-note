@@ -36,6 +36,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
   const [swipeOffset, setSwipeOffset] = useState(0)
+  const [useEnvKeyboardInset, setUseEnvKeyboardInset] = useState(false)
   const contentContainerRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const layoutViewportHeightRef = useRef(window.innerHeight)
@@ -100,8 +101,18 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     const virtualKeyboard = (navigator as Navigator & { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard
     if (virtualKeyboard) {
       virtualKeyboard.overlaysContent = true
+      setUseEnvKeyboardInset(true)
     }
   }, [])
+
+  const keyboardOffsetCss = useMemo(
+    () => (useEnvKeyboardInset ? 'env(keyboard-inset-height, 0px)' : `${keyboardHeight}px`),
+    [useEnvKeyboardInset, keyboardHeight]
+  )
+  const contentBottomPadding = useMemo(
+    () => `calc(100px + env(safe-area-inset-bottom, 0px) + ${keyboardOffsetCss})`,
+    [keyboardOffsetCss]
+  )
 
   // iOS keyboard handling via visualViewport API (same as SearchBar)
   useEffect(() => {
@@ -591,7 +602,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                   <div
                     className="min-h-full pt-6"
                     style={{
-                      paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))'
+                      paddingBottom: contentBottomPadding
                     }}
                   >
                   <textarea
@@ -623,7 +634,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                 <div
                   className="min-h-full"
                   style={{
-                    paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))'
+                    paddingBottom: contentBottomPadding
                   }}
                 >
                 <textarea
@@ -657,7 +668,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           <div 
             className="bottom-fade"
             style={{
-              bottom: `calc(env(keyboard-inset-height, 0px) + ${keyboardHeight}px)`
+              bottom: keyboardOffsetCss
             }}
           />
 
@@ -677,6 +688,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             onDelete={onDelete ? handleDelete : undefined}
             isSaving={updateMutation.isPending}
             keyboardHeight={keyboardHeight}
+            useEnvKeyboardInset={useEnvKeyboardInset}
           />
         </>,
         document.body
