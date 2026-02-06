@@ -31,27 +31,28 @@ export const NoteActionBar = ({
   isSaving,
   keyboardHeight,
 }: NoteActionBarProps) => {
+  // Calculate bottom position
+  const bottomPosition = keyboardHeight > 0 
+    ? `calc(${keyboardHeight}px + 12px + env(safe-area-inset-bottom, 0px))`
+    : `calc(12px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px))`
 
   return (
     <motion.div
       className="fixed left-0 right-0 z-[100] h-[52px] flex items-center justify-center"
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 1 }}
       animate={{ 
-        opacity: isVisible ? 1 : 0, 
-        y: 0
+        opacity: isVisible ? 1 : 0
       }}
       transition={{ 
-        duration: isVisible ? 0.3 : 0.1,
-        ease: [0.25, 0.46, 0.45, 0.94]
+        opacity: {
+          duration: isVisible ? 0.4 : 0.1,
+          ease: isVisible ? [0.4, 0, 0.2, 1] : 'linear'
+        }
       }}
       style={{
         position: 'fixed',
-        // Chromium: env(keyboard-inset-height) when VirtualKeyboard API available
-        // iOS: manual calculation via keyboardHeight
-        bottom: keyboardHeight > 0 
-          ? `calc(${keyboardHeight}px + 12px + env(safe-area-inset-bottom, 0px))`
-          : `calc(12px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px))`,
-        transition: 'bottom 0.25s ease'
+        bottom: bottomPosition,
+        pointerEvents: isVisible ? 'auto' : 'none'
       }}
     >
       <motion.div

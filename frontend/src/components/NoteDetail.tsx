@@ -38,12 +38,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
   const [swipeOffset, setSwipeOffset] = useState(0)
   const [actionBarVisible, setActionBarVisible] = useState(true)
+  const [actionBarTargetHeight, setActionBarTargetHeight] = useState(0)
   const contentContainerRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const summaryBlockRef = useRef<HTMLTextAreaElement>(null)
   const fullContentBlockRef = useRef<HTMLTextAreaElement>(null)
   const cursorMirrorRef = useRef<HTMLDivElement | null>(null)
   const keyboardOpeningStartTimeRef = useRef<number>(0)
+  const actionBarShownAfterKeyboardRef = useRef<boolean>(false)
 
   // Default to summary tab when note has summary, otherwise full text; reset when note changes
   useEffect(() => {
@@ -271,14 +273,17 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
   const handleEdit = () => {
     hapticImpact('light')
-    // Hide action bar immediately when starting to edit
-    setActionBarVisible(false)
     
     // Use flushSync to update state synchronously, then focus immediately in the same user event
     flushSync(() => {
       setEditedContent(note.content)
       setEditedSummary(note.summary || '')
       setIsEditing(true)
+      // Hide action bar immediately when starting to edit (before keyboard opens)
+      setActionBarVisible(false)
+      setActionBarTargetHeight(0)
+      // Reset the flag so we can show action bar again after keyboard opens
+      actionBarShownAfterKeyboardRef.current = false
     })
     // Focus the active tab's textarea immediately to open keyboard (must be in same event)
     // CRITICAL: On mobile, focus() must be called synchronously within the click handler
@@ -307,12 +312,33 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     }
   }, [isEditing, updateKeyboardMetrics])
 
+  // Scroll both tabs to the top when entering edit mode
+  useEffect(() => {
+    if (!isEditing) return
+
+    // Scroll summary tab to top
+    const summaryParent = summaryBlockRef.current?.parentElement
+    if (summaryParent) {
+      summaryParent.scrollTop = 0
+    }
+
+    // Scroll full content tab to top
+    const fullContentParent = fullContentBlockRef.current?.parentElement
+    if (fullContentParent) {
+      fullContentParent.scrollTop = 0
+    }
+  }, [isEditing])
+
   // Detect when keyboard starts opening and apply delay
   useEffect(() => {
     // When not editing, reset everything
     if (!isEditing) {
       setDelayedKeyboardHeight(0)
       keyboardOpeningStartTimeRef.current = 0
+      actionBarShownAfterKeyboardRef.current = false
+      setTimeout(() => {
+        setActionBarVisible(true)
+      }, 1200)
       return
     }
 
@@ -321,7 +347,10 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       // Reset delayed height immediately when keyboard closes
       setDelayedKeyboardHeight(0)
       keyboardOpeningStartTimeRef.current = 0
-      setActionBarVisible(true)
+      actionBarShownAfterKeyboardRef.current = false
+      setTimeout(() => {
+        setActionBarVisible(true)
+      }, 1200)
       return
     }
 
@@ -339,9 +368,16 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       // Still within 1 second delay - ignore this update but schedule for later
       const remainingDelay = 1000 - timeSinceKeyboardStartedOpening
       const delayTimer = setTimeout(() => {
+        // Set target height
+        setActionBarTargetHeight(keyboardHeight)
         setDelayedKeyboardHeight(keyboardHeight)
-        // Show action bar with fade in after positioning
-        setTimeout(() => setActionBarVisible(true), 50)
+        // Show only if we haven't shown it yet
+        if (!actionBarShownAfterKeyboardRef.current) {
+          actionBarShownAfterKeyboardRef.current = true
+          setTimeout(() => {
+            setActionBarVisible(true)
+          }, 1100)
+        }
       }, remainingDelay)
       
       return () => {
@@ -349,9 +385,15 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       }
     } else {
       // More than 1 second has passed - apply immediately
+      setActionBarTargetHeight(keyboardHeight)
       setDelayedKeyboardHeight(keyboardHeight)
-      // Show action bar with fade in after positioning
-      setTimeout(() => setActionBarVisible(true), 50)
+      // Show only if we haven't shown it yet
+      if (!actionBarShownAfterKeyboardRef.current) {
+        actionBarShownAfterKeyboardRef.current = true
+        setTimeout(() => {
+          setActionBarVisible(true)
+        }, 500)
+      }
     }
   }, [keyboardHeight, isEditing])
 
@@ -365,7 +407,8 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     setIsEditing(false)
     setEditedContent(note.content)
     setEditedSummary(note.summary || '')
-    // Show action bar when exiting edit mode
+    // Reset and show action bar when exiting edit mode
+    setActionBarTargetHeight(0)
     setActionBarVisible(true)
   }
 
@@ -783,10 +826,20 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       {typeof document !== 'undefined' && createPortal(
         <>
           {/* Bottom fade gradient - uses secondary background */}
-          <div 
+          <motion.div
             className="bottom-fade-secondary"
             style={{
               bottom: delayedKeyboardHeight > 0 ? delayedKeyboardHeight : 0
+            }}
+            initial={{ opacity: 1 }}
+            animate={{
+              opacity: actionBarVisible ? 1 : 0
+            }}
+            transition={{
+              opacity: {
+                duration: actionBarVisible ? 0.4 : 0.1,
+                ease: actionBarVisible ? [0.4, 0, 0.2, 1] : 'linear'
+              }
             }}
           />
 
@@ -806,7 +859,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             onCopy={handleCopyText}
             onDelete={onDelete ? handleDelete : undefined}
             isSaving={updateMutation.isPending}
-            keyboardHeight={delayedKeyboardHeight}
+            keyboardHeight={actionBarTargetHeight}
           />
         </>,
         document.body
