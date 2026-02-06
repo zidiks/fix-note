@@ -473,8 +473,13 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         )}
       </AnimatePresence>
 
-      {/* Content — no page scroll; bottom spacing is inside each tab's scroll area */}
-      <main className="pt-4 safe-area-top overflow-x-hidden flex flex-col h-screen">
+      {/* Content — dvh automatically adjusts for keyboard */}
+      <main 
+        className="pt-4 safe-area-top overflow-x-hidden flex flex-col"
+        style={{
+          height: '100dvh'
+        }}
+      >
         {/* Title */}
         {displayTitle && (
           <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
@@ -537,9 +542,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                   <div
                     className="min-h-full pt-6"
                     style={{
-                      paddingBottom: isEditing && keyboardHeight > 0
-                        ? keyboardHeight + 80
-                        : 'calc(100px + env(safe-area-inset-bottom, 0px))'
+                      paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))'
                     }}
                   >
                   <textarea
@@ -571,9 +574,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                 <div
                   className="min-h-full"
                   style={{
-                    paddingBottom: isEditing && keyboardHeight > 0
-                      ? keyboardHeight + 80
-                      : 'calc(100px + env(safe-area-inset-bottom, 0px))'
+                    paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))'
                   }}
                 >
                 <textarea
