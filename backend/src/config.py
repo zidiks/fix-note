@@ -1,3 +1,4 @@
+import base64
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List, Optional
@@ -17,6 +18,10 @@ class Settings(BaseSettings):
     deepseek_api_key: str
     deepseek_api_url: str = "https://api.deepseek.com"
     openai_api_key: str  # For embeddings
+
+    # Notes encryption
+    notes_master_key: str
+    notes_master_key_version: int = 1
     
     # Whisper
     whisper_api_url: str = "http://whisper:9000"
@@ -39,6 +44,21 @@ class Settings(BaseSettings):
             return [int(uid.strip()) for uid in self.allowed_user_ids.split(",") if uid.strip()]
         except ValueError:
             return []
+
+    @property
+    def notes_master_key_bytes(self) -> bytes:
+        return base64.b64decode(self.notes_master_key)
+
+    @field_validator("notes_master_key")
+    @classmethod
+    def validate_notes_master_key(cls, v: str) -> str:
+        try:
+            raw = base64.b64decode(v)
+        except Exception as exc:
+            raise ValueError("NOTES_MASTER_KEY must be valid base64") from exc
+        if len(raw) != 32:
+            raise ValueError("NOTES_MASTER_KEY must decode to 32 bytes")
+        return v
     
     class Config:
         env_file = ".env"

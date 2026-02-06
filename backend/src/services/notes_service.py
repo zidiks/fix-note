@@ -1,9 +1,11 @@
 import logging
+from collections import OrderedDict
 from typing import Optional, List
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 
 from ..db.supabase import get_supabase_client
+from .crypto import NotesCrypto, NotesCryptoError
 
 logger = logging.getLogger(__name__)
 from ..db.models import (
@@ -17,6 +19,163 @@ class NotesService:
     
     def __init__(self):
         self.client = get_supabase_client()
+        self.crypto = NotesCrypto.from_settings()
+        self._key_cache: OrderedDict[str, bytes] = OrderedDict()
+        self._key_cache_max = 1024
+
+    def _cache_user_key(self, user_id: str, data_key: bytes) -> None:
+        if user_id in self._key_cache:
+            self._key_cache.pop(user_id, None)
+        self._key_cache[user_id] = data_key
+        if len(self._key_cache) > self._key_cache_max:
+            self._key_cache.popitem(last=False)
+
+    async def _get_user_data_key(self, user_id: UUID) -> bytes:
+        uid = str(user_id)
+        cached = self._key_cache.get(uid)
+        if cached:
+            self._key_cache.move_to_end(uid)
+            return cached
+
+        result = self.client.table("users").select(
+            "notes_key_enc, notes_key_version"
+        ).eq("id", uid).execute()
+
+        if not result.data:
+            raise ValueError("User not found")
+
+        row = result.data[0]
+        wrapped = (row.get("notes_key_enc") or "").strip()
+        if not wrapped:
+            data_key = self.crypto.generate_data_key()
+            wrapped = self.crypto.wrap_data_key(data_key, f"{uid}:notes_key")
+            self.client.table("users").update({
+                "notes_key_enc": wrapped,
+                "notes_key_version": self.crypto.master_key_version,
+            }).eq("id", uid).execute()
+        else:
+            data_key = self.crypto.unwrap_data_key(wrapped, f"{uid}:notes_key")
+
+        self._cache_user_key(uid, data_key)
+        return data_key
+
+    def _normalize_search_lang(self, language_code: Optional[str]) -> str:
+        if not language_code:
+            return "russian"
+        code = language_code.lower()
+        if code.startswith("ru"):
+            return "russian"
+        if code.startswith("en"):
+            return "english"
+        return "simple"
+
+    def _build_search_text(
+        self,
+        title: Optional[str],
+        summary: Optional[str],
+        content: Optional[str],
+    ) -> str:
+        parts = [title or "", summary or "", content or ""]
+        return "\n".join(p for p in parts if p is not None)
+
+    def _update_search_vector(self, note_id: str, search_text: str, search_lang: str) -> None:
+        try:
+            self.client.rpc("update_note_search_vector", {
+                "p_note_id": note_id,
+                "p_search_text": search_text,
+                "p_lang": search_lang,
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to update search vector for note {note_id}: {e}")
+
+    async def _decrypt_note_row(
+        self,
+        row: dict,
+        user_id: UUID,
+        data_key: Optional[bytes] = None,
+    ) -> Note:
+        if data_key is None:
+            data_key = await self._get_user_data_key(user_id)
+        keys = self.crypto.derive_keys(data_key)
+
+        content = row.get("content")
+        summary = row.get("summary")
+        title = row.get("title")
+
+        try:
+            if row.get("content_enc"):
+                content = self.crypto.decrypt_text(
+                    row["content_enc"],
+                    keys.enc_key,
+                    f"{user_id}:content",
+                )
+            if row.get("summary_enc"):
+                summary = self.crypto.decrypt_text(
+                    row["summary_enc"],
+                    keys.enc_key,
+                    f"{user_id}:summary",
+                )
+            if row.get("title_enc"):
+                title = self.crypto.decrypt_text(
+                    row["title_enc"],
+                    keys.enc_key,
+                    f"{user_id}:title",
+                )
+        except NotesCryptoError as e:
+            logger.error(f"Failed to decrypt note {row.get('id')}: {e}")
+            raise
+
+        row_copy = dict(row)
+        row_copy["content"] = content or ""
+        row_copy["summary"] = summary
+        row_copy["title"] = title
+        return Note(**row_copy)
+
+    async def get_notes_map(self, user_id: UUID, note_ids: List[str]) -> dict[str, Note]:
+        if not note_ids:
+            return {}
+        result = self.client.table("notes").select("*").in_(
+            "id", note_ids
+        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
+
+        notes: dict[str, Note] = {}
+        data_key = await self._get_user_data_key(user_id)
+        for row in result.data:
+            note = await self._decrypt_note_row(row, user_id, data_key=data_key)
+            notes[str(note.id)] = note
+        return notes
+
+    async def get_note_with_meta(self, note_id: UUID, user_id: UUID) -> Optional[dict]:
+        result = self.client.table("notes").select("*").eq(
+            "id", str(note_id)
+        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
+
+        if not result.data:
+            return None
+
+        row = result.data[0]
+        data_key = await self._get_user_data_key(user_id)
+        keys = self.crypto.derive_keys(data_key)
+        note = await self._decrypt_note_row(row, user_id, data_key=data_key)
+
+        combined = f"{note.content}|{note.summary or ''}"
+        combined_hash = self.crypto.hash_text(combined, keys.hash_key)
+
+        return {
+            "note": note,
+            "content_hash": row.get("content_hash"),
+            "summary_hash": row.get("summary_hash"),
+            "title_hash": row.get("title_hash"),
+            "combined_hash": combined_hash,
+        }
+
+    async def compute_combined_hash(
+        self, user_id: UUID, content: str, summary: Optional[str]
+    ) -> str:
+        data_key = await self._get_user_data_key(user_id)
+        keys = self.crypto.derive_keys(data_key)
+        combined = f"{content}|{summary or ''}"
+        return self.crypto.hash_text(combined, keys.hash_key)
     
     # User operations
     async def get_or_create_user(self, telegram_id: int, username: Optional[str] = None, 
@@ -42,17 +201,34 @@ class NotesService:
                     "id", user_data["id"]
                 ).execute()
                 user_data = result.data[0]
+
+            # Ensure user has a notes encryption key
+            if not (user_data.get("notes_key_enc") or "").strip():
+                data_key = self.crypto.generate_data_key()
+                wrapped = self.crypto.wrap_data_key(data_key, f"{user_data['id']}:notes_key")
+                self.client.table("users").update({
+                    "notes_key_enc": wrapped,
+                    "notes_key_version": self.crypto.master_key_version,
+                }).eq("id", user_data["id"]).execute()
+                self._cache_user_key(str(user_data["id"]), data_key)
             
             return User(**user_data)
         
         # Create new user
+        user_id = str(uuid4())
+        data_key = self.crypto.generate_data_key()
+        wrapped = self.crypto.wrap_data_key(data_key, f"{user_id}:notes_key")
         new_user = {
+            "id": user_id,
             "telegram_id": telegram_id,
             "username": username,
             "first_name": first_name,
-            "language_code": language_code
+            "language_code": language_code,
+            "notes_key_enc": wrapped,
+            "notes_key_version": self.crypto.master_key_version,
         }
         result = self.client.table("users").insert(new_user).execute()
+        self._cache_user_key(user_id, data_key)
         return User(**result.data[0])
     
     async def get_user_by_telegram_id(self, telegram_id: int) -> Optional[User]:
@@ -66,41 +242,58 @@ class NotesService:
         return None
     
     # Note operations
-    async def create_note(self, user_id: UUID, note_data: NoteCreate) -> Note:
+    async def create_note(
+        self,
+        user_id: UUID,
+        note_data: NoteCreate,
+        user_language: Optional[str] = None,
+    ) -> Note:
         """Create a new note."""
+        data_key = await self._get_user_data_key(user_id)
+        keys = self.crypto.derive_keys(data_key)
+
+        content = note_data.content or ""
+        summary = note_data.summary
+        title = note_data.title
+
+        content_enc = self.crypto.encrypt_text(content, keys.enc_key, f"{user_id}:content")
+        summary_enc = (
+            self.crypto.encrypt_text(summary, keys.enc_key, f"{user_id}:summary")
+            if summary
+            else None
+        )
+        title_enc = (
+            self.crypto.encrypt_text(title, keys.enc_key, f"{user_id}:title")
+            if title
+            else None
+        )
+
         data = {
             "user_id": str(user_id),
-            "content": note_data.content,
-            "summary": note_data.summary,
+            "content_enc": content_enc,
+            "summary_enc": summary_enc,
+            "title_enc": title_enc,
+            "enc_version": self.crypto.master_key_version,
+            "content_hash": self.crypto.hash_text(content, keys.hash_key),
+            "summary_hash": self.crypto.hash_text(summary, keys.hash_key) if summary else None,
+            "title_hash": self.crypto.hash_text(title, keys.hash_key) if title else None,
+            "search_lang": self._normalize_search_lang(user_language),
             "source": note_data.source,
             "duration_seconds": note_data.duration_seconds,
         }
-        if note_data.title is not None:
-            data["title"] = note_data.title
         # Only include images if provided and not empty
-        # This handles cases where the column might not exist yet
         if note_data.images:
             data["images"] = note_data.images
         if note_data.voice_url:
             data["voice_url"] = note_data.voice_url
-        
-        try:
-            result = self.client.table("notes").insert(data).execute()
-            return Note(**result.data[0])
-        except Exception as e:
-            err = str(e).lower()
-            # If error is about missing column, retry without it
-            if "images" in err and "column" in err:
-                logger.warning(f"Images column not found, retrying without images: {e}")
-                data.pop("images", None)
-                result = self.client.table("notes").insert(data).execute()
-                return Note(**result.data[0])
-            if "title" in err and "column" in err:
-                logger.warning(f"Title column not found, retrying without title: {e}")
-                data.pop("title", None)
-                result = self.client.table("notes").insert(data).execute()
-                return Note(**result.data[0])
-            raise
+
+        result = self.client.table("notes").insert(data).execute()
+        row = result.data[0]
+
+        search_text = self._build_search_text(title, summary, content)
+        self._update_search_vector(row["id"], search_text, data["search_lang"])
+
+        return await self._decrypt_note_row(row, user_id, data_key=data_key)
     
     async def get_note(self, note_id: UUID, user_id: UUID) -> Optional[Note]:
         """Get a single note by ID."""
@@ -109,7 +302,7 @@ class NotesService:
         ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
         
         if result.data:
-            return Note(**result.data[0])
+            return await self._decrypt_note_row(result.data[0], user_id)
         return None
     
     async def get_notes(self, user_id: UUID, limit: int = 50, offset: int = 0) -> List[Note]:
@@ -117,22 +310,76 @@ class NotesService:
         result = self.client.table("notes").select("*").eq(
             "user_id", str(user_id)
         ).is_("deleted_at", "null").order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-        
-        return [Note(**note) for note in result.data]
+
+        data_key = await self._get_user_data_key(user_id)
+        notes: List[Note] = []
+        for row in result.data:
+            notes.append(await self._decrypt_note_row(row, user_id, data_key=data_key))
+        return notes
     
-    async def update_note(self, note_id: UUID, user_id: UUID, 
-                          note_data: NoteUpdate) -> Optional[Note]:
+    async def update_note(
+        self,
+        note_id: UUID,
+        user_id: UUID,
+        note_data: NoteUpdate,
+        user_language: Optional[str] = None,
+    ) -> Optional[Note]:
         """Update a note."""
         updates = note_data.model_dump(exclude_unset=True)
         if not updates:
             return await self.get_note(note_id, user_id)
-        
-        result = self.client.table("notes").update(updates).eq(
+
+        result = self.client.table("notes").select("*").eq(
+            "id", str(note_id)
+        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
+        if not result.data:
+            return None
+
+        row = result.data[0]
+        data_key = await self._get_user_data_key(user_id)
+        current_note = await self._decrypt_note_row(row, user_id, data_key=data_key)
+
+        content = note_data.content if note_data.content is not None else current_note.content
+        summary = note_data.summary if note_data.summary is not None else current_note.summary
+        title = note_data.title if note_data.title is not None else current_note.title
+
+        keys = self.crypto.derive_keys(data_key)
+        update_data = {
+            "content_enc": self.crypto.encrypt_text(content, keys.enc_key, f"{user_id}:content"),
+            "summary_enc": (
+                self.crypto.encrypt_text(summary, keys.enc_key, f"{user_id}:summary")
+                if summary
+                else None
+            ),
+            "title_enc": (
+                self.crypto.encrypt_text(title, keys.enc_key, f"{user_id}:title")
+                if title
+                else None
+            ),
+            "enc_version": self.crypto.master_key_version,
+            "content_hash": self.crypto.hash_text(content, keys.hash_key),
+            "summary_hash": self.crypto.hash_text(summary, keys.hash_key) if summary else None,
+            "title_hash": self.crypto.hash_text(title, keys.hash_key) if title else None,
+            "content": None,
+            "summary": None,
+            "title": None,
+        }
+
+        search_lang = (
+            self._normalize_search_lang(user_language)
+            if user_language
+            else (row.get("search_lang") or "russian")
+        )
+        update_data["search_lang"] = search_lang
+
+        update_result = self.client.table("notes").update(update_data).eq(
             "id", str(note_id)
         ).eq("user_id", str(user_id)).execute()
-        
-        if result.data:
-            return Note(**result.data[0])
+
+        if update_result.data:
+            search_text = self._build_search_text(title, summary, content)
+            self._update_search_vector(str(note_id), search_text, search_lang)
+            return await self._decrypt_note_row(update_result.data[0], user_id, data_key=data_key)
         return None
     
     async def delete_note(self, note_id: UUID, user_id: UUID) -> bool:
@@ -224,8 +471,9 @@ class NotesService:
             owner_telegram_id = note_data.get("users", {}).get("telegram_id")
             # Remove users join from note data
             note_data.pop("users", None)
+            note = await self._decrypt_note_row(note_data, UUID(str(note_data["user_id"])))
             return {
-                "note": Note(**note_data),
+                "note": note,
                 "owner_telegram_id": owner_telegram_id
             }
         return None
@@ -247,8 +495,32 @@ class NotesService:
             "match_user_id": str(user_id),
             "match_limit": limit
         }).execute()
-        
-        return [FTSSearchResult(**r) for r in result.data]
+
+        if not result.data:
+            return []
+
+        note_ids = [str(r["id"]) for r in result.data]
+        notes_map = await self.get_notes_map(user_id, note_ids)
+
+        results: List[FTSSearchResult] = []
+        for row in result.data:
+            note = notes_map.get(str(row["id"]))
+            if not note:
+                continue
+            results.append(FTSSearchResult(
+                id=note.id,
+                content=note.content,
+                title=note.title,
+                summary=note.summary,
+                source=note.source,
+                duration_seconds=note.duration_seconds,
+                images=getattr(note, "images", []) or [],
+                voice_url=getattr(note, "voice_url", None),
+                created_at=note.created_at,
+                rank=row.get("rank", 0.0),
+            ))
+
+        return results
 
     # Subscription operations
     async def can_use_feature(self, user_id: UUID, feature: str) -> tuple[bool, str, str]:
@@ -435,5 +707,3 @@ class NotesService:
             return True
         except Exception:
             return False
-
-

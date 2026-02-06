@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 from ..config import settings
 from ..db.supabase import get_supabase_client
 from ..db.models import SearchResult
+from .notes_service import NotesService
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class RAGService:
         self.supabase = get_supabase_client()
         self.embedding_model = "text-embedding-3-small"
         self.embedding_dimensions = 1536
+        self.notes_service = NotesService()
     
     async def get_embedding(self, text: str) -> List[float]:
         """
@@ -94,8 +96,23 @@ class RAGService:
             
             if not result.data:
                 return []
-            
-            return [SearchResult(**item) for item in result.data]
+
+            note_ids = [str(item["id"]) for item in result.data]
+            notes_map = await self.notes_service.get_notes_map(UUID(user_id), note_ids)
+
+            results: List[SearchResult] = []
+            for item in result.data:
+                note = notes_map.get(str(item["id"]))
+                if not note:
+                    continue
+                results.append(SearchResult(
+                    id=note.id,
+                    content=note.content,
+                    summary=note.summary,
+                    similarity=item.get("similarity", 0.0),
+                    created_at=note.created_at,
+                ))
+            return results
             
         except Exception as e:
             logger.error(f"Search error: {e}")

@@ -4,7 +4,6 @@ Handles OAuth, sync operations, and conflict resolution.
 """
 
 import logging
-import hashlib
 import httpx
 from typing import Optional, List, Literal
 from uuid import UUID
@@ -12,6 +11,8 @@ from datetime import datetime, timedelta
 
 from ..db.supabase import get_supabase_client
 from ..config import settings
+from ..db.models import NoteCreate, NoteUpdate
+from .notes_service import NotesService
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +317,7 @@ class SyncService:
     
     def __init__(self):
         self.client = get_supabase_client()
+        self.notes_service = NotesService()
     
     # ==================== Integration Connection Management ====================
     
@@ -556,10 +558,14 @@ class SyncService:
     
     # ==================== Sync Operations ====================
     
-    def _compute_content_hash(self, content: str, summary: Optional[str] = None) -> str:
+    async def _compute_content_hash(
+        self,
+        user_id: UUID,
+        content: str,
+        summary: Optional[str] = None,
+    ) -> str:
         """Compute hash of note content for change detection."""
-        data = f"{content}|{summary or ''}"
-        return hashlib.sha256(data.encode()).hexdigest()[:16]
+        return await self.notes_service.compute_combined_hash(user_id, content, summary)
     
     async def get_note_sync_status(self, note_id: UUID, integration_id: UUID) -> Optional[dict]:
         """Get sync status for a specific note and integration."""
@@ -628,14 +634,10 @@ class SyncService:
         sync_mode = integration.get("sync_mode", "two_way")
         
         # Get note (exclude deleted)
-        note_result = self.client.table("notes").select("*").eq(
-            "id", str(note_id)
-        ).eq("user_id", str(user_id)).is_("deleted_at", "null").execute()
-        
-        if not note_result.data:
+        note_meta = await self.notes_service.get_note_with_meta(note_id, user_id)
+        if not note_meta:
             raise ValueError("Note not found or deleted")
-        
-        note = note_result.data[0]
+        note = note_meta["note"]
         
         # Check if already synced
         sync_status = await self.get_note_sync_status(note_id, UUID(integration["id"]))
@@ -648,7 +650,7 @@ class SyncService:
                 # Get Notion page to check last edited time
                 notion_page = await notion_client.get_page(sync_status["external_id"])
                 notion_last_edited = notion_page.get("last_edited_time", "")
-                local_updated_at = note.get("updated_at", note.get("created_at", ""))
+                local_updated_at = (note.updated_at or note.created_at).isoformat()
                 
                 # Parse dates for comparison
                 from dateutil import parser as date_parser
@@ -681,7 +683,7 @@ class SyncService:
             raise ValueError("Sync mode is set to Notion → App only")
         
         # Compute content hash
-        local_hash = self._compute_content_hash(note["content"], note.get("summary"))
+        local_hash = note_meta["combined_hash"]
         
         # Skip if not changed and not forced
         if not force and sync_status and sync_status.get("local_content_hash") == local_hash:
@@ -689,12 +691,12 @@ class SyncService:
         
         try:
             note_data = {
-                "id": note["id"],
-                "content": note["content"],
-                "title": note.get("title"),
-                "summary": note.get("summary"),
-                "source": note.get("source", "text"),
-                "created_at": note["created_at"],
+                "id": note.id,
+                "content": note.content,
+                "title": note.title,
+                "summary": note.summary,
+                "source": note.source,
+                "created_at": note.created_at,
             }
             
             if sync_status and sync_status.get("external_id"):
@@ -851,20 +853,19 @@ class SyncService:
             if not content.strip():
                 return {"status": "skipped", "reason": "no_content_in_notion"}
             
-            # Update local note
-            update_data = {
-                "content": content,
-                "updated_at": datetime.utcnow().isoformat(),
-            }
-            if summary:
-                update_data["summary"] = summary
-            
-            self.client.table("notes").update(update_data).eq(
-                "id", str(note_id)
-            ).execute()
+            # Update local note (encrypted)
+            await self.notes_service.update_note(
+                note_id=note_id,
+                user_id=user_id,
+                note_data=NoteUpdate(content=content, summary=summary),
+            )
+            # Mark as synced to avoid re-push
+            self.client.table("notes").update({
+                "needs_sync": False,
+            }).eq("id", str(note_id)).execute()
             
             # Update sync status
-            local_hash = self._compute_content_hash(content, summary)
+            local_hash = await self._compute_content_hash(user_id, content, summary)
             await self.update_note_sync_status(
                 note_id=note_id,
                 integration_id=UUID(integration["id"]),
@@ -954,23 +955,17 @@ class SyncService:
             summary = "".join(summary_parts) or None
             
             # Compute external hash
-            external_hash = self._compute_content_hash(content, summary)
+            external_hash = await self._compute_content_hash(user_id, content, summary)
             
             # Check for conflict (both changed)
             local_hash = sync_status.get("local_content_hash")
             stored_external_hash = sync_status.get("external_content_hash")
             
             # Get current note (exclude deleted)
-            note_result = self.client.table("notes").select("*").eq(
-                "id", str(note_id)
-            ).is_("deleted_at", "null").execute()
-            
-            if note_result.data:
-                current_note = note_result.data[0]
-                current_local_hash = self._compute_content_hash(
-                    current_note["content"], 
-                    current_note.get("summary")
-                )
+            note_meta = await self.notes_service.get_note_with_meta(note_id, user_id)
+            if note_meta:
+                current_note = note_meta["note"]
+                current_local_hash = note_meta["combined_hash"]
                 
                 # Conflict: local changed and external changed
                 if (current_local_hash != local_hash and 
@@ -984,14 +979,17 @@ class SyncService:
                     
                     return {
                         "status": "conflict",
-                        "local_content": current_note["content"],
+                        "local_content": current_note.content,
                         "external_content": content,
                     }
             
             # Update local note with Notion content
+            await self.notes_service.update_note(
+                note_id=note_id,
+                user_id=user_id,
+                note_data=NoteUpdate(content=content, summary=summary),
+            )
             self.client.table("notes").update({
-                "content": content,
-                "summary": summary,
                 "needs_sync": False,
             }).eq("id", str(note_id)).execute()
             
@@ -1195,12 +1193,14 @@ class SyncService:
             external_summary = "".join(summary_parts) or None
             
             # Create new note with external content
-            new_note = self.client.table("notes").insert({
-                "user_id": str(user_id),
-                "content": f"[From Notion] {external_content}",
-                "summary": external_summary,
-                "source": "text",
-            }).execute()
+            new_note = await self.notes_service.create_note(
+                user_id=user_id,
+                note_data=NoteCreate(
+                    content=f"[From Notion] {external_content}",
+                    summary=external_summary,
+                    source="text",
+                ),
+            )
             
             # Sync original (local version) to Notion
             await self.sync_note_to_notion(user_id, note_id, force=True)
@@ -1208,8 +1208,7 @@ class SyncService:
             return {
                 "status": "resolved",
                 "resolution": "keep_both",
-                "new_note_id": new_note.data[0]["id"],
+                "new_note_id": str(new_note.id),
             }
         
         raise ValueError(f"Invalid resolution: {resolution}")
-

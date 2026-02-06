@@ -498,7 +498,8 @@ async def handle_voice(message: Message):
                 source="voice",
                 duration_seconds=message.voice.duration,
                 voice_url=voice_url
-            )
+            ),
+            user_language=user.language_code
         )
         
         # Index for RAG
@@ -597,7 +598,8 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
                 summary=summary,
                 source=source,
                 images=image_urls
-            )
+            ),
+            user_language=user.language_code
         )
         
         # Index for RAG
@@ -693,7 +695,8 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
                 summary=summary,
                 source="photo",
                 images=image_urls
-            )
+            ),
+            user_language=user.language_code
         )
         
         # Index for RAG
@@ -830,7 +833,8 @@ async def save_text_note(message: Message, user, text: str):
                 title=title,
                 summary=summary,
                 source="text"
-            )
+            ),
+            user_language=user.language_code
         )
 
         # Index for RAG
@@ -953,7 +957,8 @@ async def handle_photo(message: Message):
                 summary=summary,
                 source="photo",
                 images=[url]
-            )
+            ),
+            user_language=user.language_code
         )
         
         # Index for RAG
@@ -1061,4 +1066,3 @@ async def stop_bot():
     """Stop the bot."""
     logger.info("Stopping bot...")
     await bot.session.close()
-

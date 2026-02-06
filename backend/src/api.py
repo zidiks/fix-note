@@ -241,7 +241,7 @@ async def create_note(
     user=Depends(get_current_user)
 ):
     """Create a new note."""
-    note = await notes_service.create_note(user.id, note_data)
+    note = await notes_service.create_note(user.id, note_data, user.language_code)
     
     # Index for RAG
     await rag_service.index_note(str(note.id), note.content)
@@ -260,7 +260,7 @@ async def update_note(
     user=Depends(get_current_user)
 ):
     """Update a note."""
-    note = await notes_service.update_note(note_id, user.id, note_data)
+    note = await notes_service.update_note(note_id, user.id, note_data, user.language_code)
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     
