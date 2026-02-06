@@ -275,7 +275,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       } else {
         fullContentBlockRef.current?.focus()
       }
-    }, 0)
+    }, 150) // Delay to ensure UI is ready and textarea can receive focus
     return () => clearTimeout(id)
   }, [isEditing, activeTab, note.summary])
 
