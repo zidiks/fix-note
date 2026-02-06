@@ -5,7 +5,6 @@ import { useI18n } from '../i18n'
 import { DateGroup } from './DateGroup'
 import { NoteCard } from './NoteCard'
 import { EmptyState } from './ui/EmptyState'
-import { Separator } from './ui/Separator'
 
 interface NotesListProps {
   searchQuery: string
@@ -28,10 +27,9 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
           <div className="h-6 w-32 skeleton rounded mb-2" />
           <div className="rounded-xl overflow-hidden bg-[var(--bg-secondary)]">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="px-4 py-3">
+              <div key={i} className="p-4">
                 <div className="h-5 skeleton w-3/4 mb-1.5" />
                 <div className="h-4 skeleton w-full" />
-                {i < 3 && <Separator className="mt-3" />}
               </div>
             ))}
           </div>

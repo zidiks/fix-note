@@ -40,6 +40,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const summaryBlockRef = useRef<HTMLTextAreaElement>(null)
   const fullContentBlockRef = useRef<HTMLTextAreaElement>(null)
+  const cursorMirrorRef = useRef<HTMLDivElement | null>(null)
 
   // Default to summary tab when note has summary, otherwise full text; reset when note changes
   useEffect(() => {
@@ -87,8 +88,6 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
       if (newKeyboardHeight > 100) {
         setKeyboardHeight(newKeyboardHeight)
-        // Calculate viewport offset to keep action bar above keyboard
-        // When viewport scrolls, we need to account for the offset
         setViewportOffset(offsetTop)
         document.body.style.height = `${viewportHeight}px`
         document.body.style.overflow = 'hidden'
@@ -100,10 +99,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       }
     }
 
-    const handleScroll = () => {
-      // Update on scroll to keep action bar in correct position
-      handleResize()
-    }
+    const handleScroll = () => handleResize()
 
     viewport.addEventListener('resize', handleResize)
     viewport.addEventListener('scroll', handleScroll)
@@ -115,6 +111,26 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       document.body.style.overflow = ''
     }
   }, [])
+
+  // When entering edit mode, re-check viewport after keyboard opens so action bar positions correctly
+  useEffect(() => {
+    if (!isEditing) return
+    const check = () => {
+      const viewport = window.visualViewport
+      if (!viewport) return
+      const newKeyboardHeight = window.innerHeight - viewport.height - viewport.offsetTop
+      if (newKeyboardHeight > 100) {
+        setKeyboardHeight(newKeyboardHeight)
+        setViewportOffset(viewport.offsetTop)
+      }
+    }
+    const t1 = setTimeout(check, 100)
+    const t2 = setTimeout(check, 350)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [isEditing])
 
   // Share link mutation - always public
   const shareMutation = useMutation({
@@ -280,18 +296,51 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     expand(fullContentBlockRef.current)
   }, [isEditing, editedContent, editedSummary, note.content, note.summary])
 
-  // Scroll cursor into view when editing
-  const scrollCursorIntoView = (textarea: HTMLTextAreaElement) => {
-    const rect = textarea.getBoundingClientRect()
-    const viewportHeight = window.visualViewport?.height || window.innerHeight
-    const actionBarSpace = 80
-    const availableBottom = viewportHeight - actionBarSpace
-
-    if (rect.bottom > availableBottom) {
-      const scrollAmount = rect.bottom - availableBottom + 20
-      window.scrollBy({ top: scrollAmount, behavior: 'smooth' })
+  // Get pixel Y of cursor in textarea content (using a mirror div)
+  const getCursorPixelTop = useCallback((textarea: HTMLTextAreaElement): number => {
+    const start = textarea.selectionStart
+    const value = textarea.value
+    if (start <= 0) return 0
+    const style = getComputedStyle(textarea)
+    let mirror = cursorMirrorRef.current
+    if (!mirror) {
+      mirror = document.createElement('div')
+      mirror.setAttribute('aria-hidden', 'true')
+      mirror.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      document.body.appendChild(mirror)
+      cursorMirrorRef.current = mirror
     }
-  }
+    mirror.style.font = style.font
+    mirror.style.fontSize = style.fontSize
+    mirror.style.fontFamily = style.fontFamily
+    mirror.style.lineHeight = style.lineHeight
+    mirror.style.letterSpacing = style.letterSpacing
+    mirror.style.padding = style.padding
+    mirror.style.width = `${textarea.clientWidth}px`
+    mirror.style.boxSizing = style.boxSizing
+    mirror.textContent = value.substring(0, start)
+    return mirror.offsetHeight
+  }, [])
+
+  // Scroll the content pane so the cursor stays visible; do not scroll the window
+  const scrollCursorIntoView = useCallback((textarea: HTMLTextAreaElement) => {
+    const scrollParent = textarea.parentElement
+    if (!scrollParent || scrollParent.scrollHeight <= scrollParent.clientHeight) return
+
+    const cursorTop = getCursorPixelTop(textarea)
+    const lineHeight = 24
+    const padding = 16
+    const cursorBottom = cursorTop + lineHeight
+    const scrollTop = scrollParent.scrollTop
+    const visibleTop = scrollTop
+    const visibleBottom = scrollTop + scrollParent.clientHeight
+
+    if (cursorTop < visibleTop + padding) {
+      scrollParent.scrollTop = Math.max(0, cursorTop - padding)
+    } else if (cursorBottom > visibleBottom - padding) {
+      scrollParent.scrollTop = cursorBottom - scrollParent.clientHeight + padding
+    }
+  }, [getCursorPixelTop])
 
   // Calculate content position for animation
   const [containerWidth, setContainerWidth] = useState(window.innerWidth)
@@ -437,15 +486,8 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         )}
       </AnimatePresence>
 
-      {/* Content */}
-      <main
-        className="pt-4 safe-area-top hide-scrollbar overflow-y-auto overflow-x-hidden flex flex-col min-h-screen"
-        style={{
-          paddingBottom: isEditing && keyboardHeight > 0
-            ? keyboardHeight + 80
-            : 'calc(100px + env(safe-area-inset-bottom, 0px))'
-        }}
-      >
+      {/* Content — no page scroll; bottom spacing is inside each tab's scroll area */}
+      <main className="pt-4 safe-area-top overflow-x-hidden flex flex-col h-screen">
         {/* Title */}
         {displayTitle && (
           <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
@@ -479,14 +521,14 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           hasSummary={!!note.summary}
         />
 
-        {/* Tab content with swipe gesture support and horizontal movement */}
+        {/* Tab content with swipe gesture support; each tab scrolls independently */}
         <div
           ref={contentContainerRef}
-          className="relative overflow-hidden flex-1"
+          className="relative overflow-hidden flex-1 min-h-0"
           style={{ touchAction: 'pan-y' }}
         >
           <motion.div
-            className="flex min-h-full"
+            className="flex h-full"
             animate={{
               x: contentPosition
             }}
@@ -498,52 +540,75 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             }}
             style={{
               width: note.summary ? '200%' : '100%',
+              height: '100%',
             }}
           >
-            {/* Summary tab content — single editable block, readOnly when not editing */}
+            {/* Summary tab — scroll only inside this pane */}
             {note.summary && (
-              <div className="w-1/2 flex-shrink-0 px-5 flex flex-col min-h-full">
+              <div className="w-1/2 flex-shrink-0 flex flex-col min-h-0 h-full">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden hide-scrollbar px-5">
+                  <div
+                    className="min-h-full"
+                    style={{
+                      paddingBottom: isEditing && keyboardHeight > 0
+                        ? keyboardHeight + 80
+                        : 'calc(100px + env(safe-area-inset-bottom, 0px))'
+                    }}
+                  >
+                  <textarea
+                    ref={summaryBlockRef}
+                    readOnly={!isEditing}
+                    tabIndex={isEditing ? 0 : -1}
+                    value={editedSummary}
+                    onChange={(e) => {
+                      setEditedSummary(e.target.value)
+                      autoResizeTextarea(e.target)
+                      requestAnimationFrame(() => scrollCursorIntoView(e.target))
+                    }}
+                    className={`w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)] whitespace-pre-wrap ${
+                      !isEditing ? 'cursor-default' : ''
+                    }`}
+                    style={{ scrollMarginBottom: 100 }}
+                    placeholder={t('noSummary')}
+                    aria-readonly={!isEditing}
+                  />
+                  {renderLinkPreviews()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Full text tab — scroll only inside this pane */}
+            <div className={note.summary ? "w-1/2 flex-shrink-0 flex flex-col min-h-0 h-full" : "w-full flex flex-col min-h-0 h-full"}>
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden hide-scrollbar px-5">
+                <div
+                  className="min-h-full"
+                  style={{
+                    paddingBottom: isEditing && keyboardHeight > 0
+                      ? keyboardHeight + 80
+                      : 'calc(100px + env(safe-area-inset-bottom, 0px))'
+                  }}
+                >
                 <textarea
-                  ref={summaryBlockRef}
+                  ref={fullContentBlockRef}
                   readOnly={!isEditing}
                   tabIndex={isEditing ? 0 : -1}
-                  value={editedSummary}
+                  value={editedContent}
                   onChange={(e) => {
-                    setEditedSummary(e.target.value)
+                    setEditedContent(e.target.value)
                     autoResizeTextarea(e.target)
-                    scrollCursorIntoView(e.target)
+                    requestAnimationFrame(() => scrollCursorIntoView(e.target))
                   }}
                   className={`w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)] whitespace-pre-wrap ${
                     !isEditing ? 'cursor-default' : ''
                   }`}
                   style={{ scrollMarginBottom: 100 }}
-                  placeholder={t('noSummary')}
+                  placeholder="Введите текст заметки..."
                   aria-readonly={!isEditing}
                 />
-                {renderLinkPreviews()}
-              </div>
-            )}
-            
-            {/* Full text tab content — single editable block, readOnly when not editing */}
-            <div className={note.summary ? "w-1/2 flex-shrink-0 px-5 flex flex-col min-h-full" : "w-full px-5 flex flex-col min-h-full"}>
-              <textarea
-                ref={fullContentBlockRef}
-                readOnly={!isEditing}
-                tabIndex={isEditing ? 0 : -1}
-                value={editedContent}
-                onChange={(e) => {
-                  setEditedContent(e.target.value)
-                  autoResizeTextarea(e.target)
-                  scrollCursorIntoView(e.target)
-                }}
-                className={`w-full text-base leading-relaxed bg-transparent outline-none resize-none selectable-text overflow-hidden text-[var(--text-primary)] whitespace-pre-wrap ${
-                  !isEditing ? 'cursor-default' : ''
-                }`}
-                style={{ scrollMarginBottom: 100 }}
-                placeholder="Введите текст заметки..."
-                aria-readonly={!isEditing}
-              />
               {renderLinkPreviews()}
+                </div>
+              </div>
             </div>
           </motion.div>
         </div>
