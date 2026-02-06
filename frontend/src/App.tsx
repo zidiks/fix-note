@@ -173,34 +173,63 @@ function App() {
     const isDarkMode = colorScheme === 'dark'
 
     // Apply dark/light class based on colorScheme
+    // Apply to both html and body to ensure CSS variables work everywhere
     if (isDarkMode) {
       document.documentElement.classList.add('dark')
+      document.body.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
+      document.body.classList.remove('dark')
     }
 
-    // Only set Telegram-specific theme variables, not our app's CSS variables
-    // Our app's CSS variables (--bg-primary, --bg-secondary, etc.) should come from CSS
-    // based on the .dark class, not from Telegram themeParams which can be inconsistent
+    // Force set CSS variables via JavaScript to ensure they work in Telegram WebView
+    // This is critical for Telegram WebView which may not respect CSS classes properly
+    const root = document.documentElement
+    
+    if (isDarkMode) {
+      // Dark mode colors
+      root.style.setProperty('--bg-primary', '#000000')
+      root.style.setProperty('--bg-secondary', '#1C1C1E')
+      root.style.setProperty('--text-primary', '#FFFFFF')
+      root.style.setProperty('--text-secondary', '#8E8E93')
+      root.style.setProperty('--text-tertiary', '#636366')
+      root.style.setProperty('--separator', '#38383A')
+      root.style.setProperty('--destructive', '#FF453A')
+      root.style.setProperty('--success', '#30D158')
+      root.style.setProperty('--warning', '#FF9F0A')
+    } else {
+      // Light mode colors
+      root.style.setProperty('--bg-primary', '#F0F0F2')
+      root.style.setProperty('--bg-secondary', '#FCFCFC')
+      root.style.setProperty('--text-primary', '#29333F')
+      root.style.setProperty('--text-secondary', '#8C9198')
+      root.style.setProperty('--text-tertiary', '#AEAEB2')
+      root.style.setProperty('--separator', 'rgba(60, 60, 67, 0.12)')
+      root.style.setProperty('--destructive', '#FF3B30')
+      root.style.setProperty('--success', '#34C759')
+      root.style.setProperty('--warning', '#FF9500')
+    }
+
+    // Set Telegram-specific theme variables
     if (themeParams) {
       if (themeParams.bg_color) {
-        document.documentElement.style.setProperty('--tg-theme-bg-color', themeParams.bg_color)
+        root.style.setProperty('--tg-theme-bg-color', themeParams.bg_color)
       }
       if (themeParams.text_color) {
-        document.documentElement.style.setProperty('--tg-theme-text-color', themeParams.text_color)
+        root.style.setProperty('--tg-theme-text-color', themeParams.text_color)
       }
       if (themeParams.hint_color) {
-        document.documentElement.style.setProperty('--tg-theme-hint-color', themeParams.hint_color)
+        root.style.setProperty('--tg-theme-hint-color', themeParams.hint_color)
       }
       if (themeParams.link_color) {
-        document.documentElement.style.setProperty('--tg-theme-link-color', themeParams.link_color)
-        document.documentElement.style.setProperty('--accent', themeParams.link_color)
+        root.style.setProperty('--tg-theme-link-color', themeParams.link_color)
+        root.style.setProperty('--accent', themeParams.link_color)
       }
       if (themeParams.button_color) {
-        document.documentElement.style.setProperty('--tg-theme-button-color', themeParams.button_color)
+        root.style.setProperty('--tg-theme-button-color', themeParams.button_color)
       }
       if (themeParams.secondary_bg_color) {
-        document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color)
+        root.style.setProperty('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color)
       }
     }
   }, [colorScheme, themeParams])

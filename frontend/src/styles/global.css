@@ -78,6 +78,7 @@
 }
 
 /* Dark mode via class */
+html.dark,
 :root.dark,
 .dark {
   --bg-primary: #000000;

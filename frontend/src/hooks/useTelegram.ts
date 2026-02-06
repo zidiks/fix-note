@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 
 interface TelegramUser {
   id: number
@@ -144,8 +144,39 @@ export const useTelegram = () => {
     return getDevInitData()
   }, [tg])
   
-  const themeParams = useMemo(() => tg?.themeParams, [tg])
-  const colorScheme = useMemo(() => tg?.colorScheme || 'light', [tg])
+  // Use state to track theme changes in real-time
+  const [themeParams, setThemeParams] = useState<ThemeParams | undefined>(tg?.themeParams)
+  const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(tg?.colorScheme || 'light')
+
+  // Listen to theme changes from Telegram WebView
+  useEffect(() => {
+    if (!tg) return
+
+    // Set initial values
+    setThemeParams(tg.themeParams)
+    setColorScheme(tg.colorScheme || 'light')
+
+    // Poll for theme changes since Telegram WebView doesn't always fire events
+    // This ensures we catch theme changes in real-time
+    let lastColorScheme = tg.colorScheme
+    let lastThemeParams = JSON.stringify(tg.themeParams)
+    
+    const intervalId = setInterval(() => {
+      const currentColorScheme = tg.colorScheme
+      const currentThemeParams = JSON.stringify(tg.themeParams)
+      
+      if (currentColorScheme !== lastColorScheme || currentThemeParams !== lastThemeParams) {
+        lastColorScheme = currentColorScheme
+        lastThemeParams = currentThemeParams
+        setThemeParams(tg.themeParams)
+        setColorScheme(currentColorScheme || 'light')
+      }
+    }, 100)
+
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [tg])
   
   const startParam = useMemo(() => {
     if (tg?.initDataUnsafe?.start_param) return tg.initDataUnsafe.start_param
