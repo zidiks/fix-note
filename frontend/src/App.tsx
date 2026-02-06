@@ -48,7 +48,6 @@ function App() {
   const activePointerIdRef = useRef<number | null>(null)
   const activeTouchIdRef = useRef<number | null>(null)
   const hapticTriggeredRef = useRef(false)
-  const isPullingRef = useRef(false)
   const [pullDistance, setPullDistance] = useState(0)
   const [isPulling, setIsPulling] = useState(false)
   const [isPullArmed, setIsPullArmed] = useState(false)
@@ -253,29 +252,26 @@ function App() {
   const isPullEnabled = viewState === 'list' && searchQuery.length < 2
   const pullProgress = Math.min(1, pullDistance / PULL_THRESHOLD)
 
+  const setPull = useCallback((value: number) => {
+    pullDistanceRef.current = value
+    setPullDistance(value)
+  }, [])
+
+  const setPulling = useCallback((value: boolean) => {
+    setIsPulling(value)
+  }, [])
+
   useEffect(() => {
     if (!isPullEnabled) {
-      pullDistanceRef.current = 0
-      setPullDistance(0)
-      isPullingRef.current = false
-      setIsPulling(false)
+      setPull(0)
+      setPulling(false)
       setIsPullArmed(false)
       setIsRefreshing(false)
       activePointerIdRef.current = null
       activeTouchIdRef.current = null
       hapticTriggeredRef.current = false
     }
-  }, [isPullEnabled])
-
-  const setPull = (value: number) => {
-    pullDistanceRef.current = value
-    setPullDistance(value)
-  }
-
-  const setPulling = (value: boolean) => {
-    isPullingRef.current = value
-    setIsPulling(value)
-  }
+  }, [isPullEnabled, setPull, setPulling])
 
   const handlePullStart = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse') return
@@ -445,7 +441,7 @@ function App() {
       container.removeEventListener('touchend', handleTouchEnd)
       container.removeEventListener('touchcancel', handleTouchCancel)
     }
-  }, [isPullEnabled, isRefreshing, isPullArmed, hapticImpact, refetchNotes])
+  }, [isPullEnabled, isRefreshing, isPullArmed, hapticImpact, refetchNotes, setPull, setPulling])
 
   const handleSelectNote = (note: Note) => {
     setSelectedNote(note)
