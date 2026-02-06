@@ -39,3 +39,4 @@ ssl/*.crt
 
 # Whisper models cache
 whisper-models/
+frontend/cloudflared/*.json

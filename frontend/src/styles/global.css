@@ -331,6 +331,38 @@ input, textarea {
   );
 }
 
+/* Bottom fade variant for secondary background (e.g., NoteDetail page) */
+.bottom-fade-secondary {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 130px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--bg-secondary) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg-secondary) 98%, transparent) 20%,
+    color-mix(in srgb, var(--bg-secondary) 85%, transparent) 40%,
+    color-mix(in srgb, var(--bg-secondary) 50%, transparent) 65%,
+    color-mix(in srgb, var(--bg-secondary) 0%, transparent) 100%
+  );
+  pointer-events: none;
+  z-index: 90;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+.dark .bottom-fade-secondary {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--bg-secondary) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg-secondary) 98%, transparent) 20%,
+    color-mix(in srgb, var(--bg-secondary) 85%, transparent) 40%,
+    color-mix(in srgb, var(--bg-secondary) 50%, transparent) 65%,
+    color-mix(in srgb, var(--bg-secondary) 0%, transparent) 100%
+  );
+}
+
 /* ===== Bottom Bar Container ===== */
 .bottom-bar {
   position: fixed;

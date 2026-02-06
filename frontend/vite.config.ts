@@ -11,6 +11,10 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    allowedHosts: [
+      'dev.fixnote.space',
+      'fixnote.space'
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

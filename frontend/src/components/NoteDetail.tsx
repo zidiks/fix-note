@@ -32,15 +32,18 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const [editedContent, setEditedContent] = useState(note.content)
   const [editedSummary, setEditedSummary] = useState(note.summary || '')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const [delayedKeyboardHeight, setDelayedKeyboardHeight] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>(() => (note.summary ? 'summary' : 'full'))
   const [swipeOffset, setSwipeOffset] = useState(0)
+  const [actionBarVisible, setActionBarVisible] = useState(true)
   const contentContainerRef = useRef<HTMLDivElement>(null)
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const summaryBlockRef = useRef<HTMLTextAreaElement>(null)
   const fullContentBlockRef = useRef<HTMLTextAreaElement>(null)
   const cursorMirrorRef = useRef<HTMLDivElement | null>(null)
+  const keyboardOpeningStartTimeRef = useRef<number>(0)
 
   // Default to summary tab when note has summary, otherwise full text; reset when note changes
   useEffect(() => {
@@ -75,7 +78,16 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  // iOS workaround from https://mathix.dev/blog/fix-html-elements-on-top-of-the-ios-keyboard-using-html-css-js
+  // Enable VirtualKeyboard API for Chromium browsers (Android Chrome, Edge)
+  // https://mathix.dev/blog/fix-html-elements-on-top-of-the-ios-keyboard-using-html-css-js
+  useEffect(() => {
+    if ('virtualKeyboard' in navigator) {
+      const vk = (navigator as any).virtualKeyboard
+      vk.overlaysContent = true
+    }
+  }, [])
+
+  // iOS workaround - calculate keyboard offset manually
   const updateKeyboardMetrics = useCallback(() => {
     const vv = window.visualViewport
     if (!vv || vv.height === 0) return
@@ -259,6 +271,9 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
   const handleEdit = () => {
     hapticImpact('light')
+    // Hide action bar immediately when starting to edit
+    setActionBarVisible(false)
+    
     // Use flushSync to update state synchronously, then focus immediately in the same user event
     flushSync(() => {
       setEditedContent(note.content)
@@ -266,13 +281,13 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
       setIsEditing(true)
     })
     // Focus the active tab's textarea immediately to open keyboard (must be in same event)
-    requestAnimationFrame(() => {
-      if (activeTab === 'summary' && note.summary) {
-        summaryBlockRef.current?.focus()
-      } else {
-        fullContentBlockRef.current?.focus()
-      }
-    })
+    // CRITICAL: On mobile, focus() must be called synchronously within the click handler
+    // Using requestAnimationFrame or setTimeout breaks the user gesture context
+    if (activeTab === 'summary' && note.summary) {
+      summaryBlockRef.current?.focus()
+    } else {
+      fullContentBlockRef.current?.focus()
+    }
   }
 
   // Retry mechanism: after entering edit mode, keep checking viewport for 3 seconds
@@ -292,6 +307,54 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     }
   }, [isEditing, updateKeyboardMetrics])
 
+  // Detect when keyboard starts opening and apply delay
+  useEffect(() => {
+    // When not editing, reset everything
+    if (!isEditing) {
+      setDelayedKeyboardHeight(0)
+      keyboardOpeningStartTimeRef.current = 0
+      return
+    }
+
+    // Keyboard is closed
+    if (keyboardHeight === 0) {
+      // Reset delayed height immediately when keyboard closes
+      setDelayedKeyboardHeight(0)
+      keyboardOpeningStartTimeRef.current = 0
+      setActionBarVisible(true)
+      return
+    }
+
+    // Keyboard is opening or open (keyboardHeight > 0)
+    const now = Date.now()
+    
+    // First time keyboard height becomes > 0 - record start time
+    if (keyboardOpeningStartTimeRef.current === 0) {
+      keyboardOpeningStartTimeRef.current = now
+    }
+
+    const timeSinceKeyboardStartedOpening = now - keyboardOpeningStartTimeRef.current
+
+    if (timeSinceKeyboardStartedOpening < 1000) {
+      // Still within 1 second delay - ignore this update but schedule for later
+      const remainingDelay = 1000 - timeSinceKeyboardStartedOpening
+      const delayTimer = setTimeout(() => {
+        setDelayedKeyboardHeight(keyboardHeight)
+        // Show action bar with fade in after positioning
+        setTimeout(() => setActionBarVisible(true), 50)
+      }, remainingDelay)
+      
+      return () => {
+        clearTimeout(delayTimer)
+      }
+    } else {
+      // More than 1 second has passed - apply immediately
+      setDelayedKeyboardHeight(keyboardHeight)
+      // Show action bar with fade in after positioning
+      setTimeout(() => setActionBarVisible(true), 50)
+    }
+  }, [keyboardHeight, isEditing])
+
   const handleSave = () => {
     hapticImpact('medium')
     updateMutation.mutate()
@@ -302,6 +365,8 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     setIsEditing(false)
     setEditedContent(note.content)
     setEditedSummary(note.summary || '')
+    // Show action bar when exiting edit mode
+    setActionBarVisible(true)
   }
 
   // Auto-resize textarea helper
@@ -519,44 +584,118 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           height: '100dvh'
         }}
       >
-        {/* Title */}
-        {displayTitle && (
-          <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
-            {displayTitle}
-          </h1>
-        )}
+        {/* Title and Date - collapse when editing */}
+        <AnimatePresence initial={false}>
+          {!isEditing && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+              animate={{ 
+                opacity: 1,
+                height: 'auto',
+                marginBottom: 'auto'
+              }}
+              exit={{ 
+                opacity: 0,
+                height: 0,
+                marginBottom: 0
+              }}
+              transition={{
+                opacity: { duration: 0.2, ease: 'easeIn' },
+                height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                marginBottom: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+              }}
+              style={{ overflow: 'hidden' }}
+            >
+              {/* Title */}
+              {displayTitle && (
+                <h1 className="text-[22px] font-bold mt-2 mb-1.5 leading-6 text-[var(--text-primary)] px-5 break-words">
+                  {displayTitle}
+                </h1>
+              )}
 
-        {/* Date */}
-        <p className="text-base font-medium mb-4 text-[var(--text-secondary)] px-5">
-          {formattedDate}
-        </p>
+              {/* Date */}
+              <p className="text-base font-medium mb-4 text-[var(--text-secondary)] px-5">
+                {formattedDate}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Voice Player - show for voice notes with voice_url */}
-        {isVoice && note.voice_url && note.duration_seconds && (
-          <VoicePlayer
-            voiceUrl={note.voice_url}
-            duration={note.duration_seconds}
-            className="px-5"
-          />
-        )}
+        {/* Voice Player - show for voice notes with voice_url, hide when editing */}
+        <AnimatePresence initial={false}>
+          {isVoice && note.voice_url && note.duration_seconds && !isEditing && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ 
+                opacity: 1,
+                height: 'auto'
+              }}
+              exit={{ 
+                opacity: 0,
+                height: 0
+              }}
+              transition={{
+                opacity: { duration: 0.2, ease: 'easeIn' },
+                height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+              }}
+              style={{ overflow: 'hidden' }}
+            >
+              <VoicePlayer
+                voiceUrl={note.voice_url}
+                duration={note.duration_seconds}
+                className="px-5"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Images gallery - show at the top if there are images */}
-        {hasImages && !isEditing && (
-          <ImageGallery className="px-5" images={note.images!} />
-        )}
+        <AnimatePresence initial={false}>
+          {hasImages && !isEditing && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ 
+                opacity: 1,
+                height: 'auto'
+              }}
+              exit={{ 
+                opacity: 0,
+                height: 0
+              }}
+              transition={{
+                opacity: { duration: 0.2, ease: 'easeIn' },
+                height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+              }}
+              style={{ overflow: 'hidden' }}
+            >
+              <ImageGallery className="px-5" images={note.images!} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Tabs: AI Summary | Full Text */}
-        <NoteTabs
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          hasSummary={!!note.summary}
-        />
+        {/* Tabs: AI Summary | Full Text - animate upward when entering edit mode */}
+        <motion.div
+          layout
+          transition={{
+            layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+          }}
+        >
+          <NoteTabs
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            hasSummary={!!note.summary}
+          />
+        </motion.div>
 
         {/* Tab content with swipe gesture support; each tab scrolls independently */}
-        <div
+        <motion.div
           ref={contentContainerRef}
           className="relative overflow-hidden flex-1 min-h-0"
           style={{ touchAction: 'pan-y' }}
+          layout
+          transition={{
+            layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+          }}
         >
           <motion.div
             className="flex h-full"
@@ -581,7 +720,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                   <div
                     className="min-h-full pt-6"
                     style={{
-                      paddingBottom: contentBottomPadding
+                      paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))'
                     }}
                   >
                   <textarea
@@ -613,7 +752,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
                 <div
                   className="min-h-full"
                   style={{
-                    paddingBottom: contentBottomPadding
+                    paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))'
                   }}
                 >
                 <textarea
@@ -638,16 +777,16 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
               </div>
             </div>
           </motion.div>
-        </div>
+        </motion.div>
       </main>
 
       {typeof document !== 'undefined' && createPortal(
         <>
-          {/* Bottom fade gradient - same pattern as SearchBar */}
+          {/* Bottom fade gradient - uses secondary background */}
           <div 
-            className="bottom-fade"
+            className="bottom-fade-secondary"
             style={{
-              bottom: keyboardOffsetCss
+              bottom: delayedKeyboardHeight > 0 ? delayedKeyboardHeight : 0
             }}
           />
 
@@ -658,6 +797,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             canSync={canSync}
             syncStatus={syncStatus}
             isSharing={isSharing}
+            isVisible={actionBarVisible}
             onEdit={handleEdit}
             onSave={handleSave}
             onCancel={handleCancelEdit}
@@ -666,7 +806,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
             onCopy={handleCopyText}
             onDelete={onDelete ? handleDelete : undefined}
             isSaving={updateMutation.isPending}
-            keyboardHeight={keyboardHeight}
+            keyboardHeight={delayedKeyboardHeight}
           />
         </>,
         document.body

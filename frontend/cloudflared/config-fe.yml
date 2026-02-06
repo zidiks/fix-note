@@ -1,0 +1,7 @@
+tunnel: bf0a6d53-d191-431f-8c80-7e3fc222cfee
+credentials-file: ./cloudflared/bf0a6d53-d191-431f-8c80-7e3fc222cfee.json
+
+ingress:
+  - hostname: dev.fixnote.space
+    service: http://localhost:3000
+  - service: http_status:404

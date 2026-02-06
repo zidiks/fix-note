@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tunnel": "node scripts/dev-tunnel.mjs",
+    "dev:full": "concurrently -k -n VITE,CLOUDFLARE -c blue,cyan \"npm run dev\" \"npm run dev:tunnel\"",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.17.19",
     "clsx": "^2.1.1",
+    "concurrently": "^9.2.1",
     "date-fns": "^3.3.1",
     "framer-motion": "^11.0.3",
     "react": "^18.2.0",
@@ -18,6 +21,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@types/node": "^25.2.1",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
