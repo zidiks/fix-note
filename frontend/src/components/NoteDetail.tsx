@@ -266,6 +266,19 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     setIsEditing(true)
   }
 
+  // When entering edit mode, focus the active tab's textarea so the keyboard opens
+  useEffect(() => {
+    if (!isEditing) return
+    const id = setTimeout(() => {
+      if (activeTab === 'summary' && note.summary) {
+        summaryBlockRef.current?.focus()
+      } else {
+        fullContentBlockRef.current?.focus()
+      }
+    }, 0)
+    return () => clearTimeout(id)
+  }, [isEditing, activeTab, note.summary])
+
   const handleSave = () => {
     hapticImpact('medium')
     updateMutation.mutate()
@@ -496,7 +509,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
         )}
 
         {/* Date */}
-        <p className="text-base font-medium mb-5 text-[var(--text-secondary)] px-5">
+        <p className="text-base font-medium mb-4 text-[var(--text-secondary)] px-5">
           {formattedDate}
         </p>
 
@@ -548,7 +561,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
               <div className="w-1/2 flex-shrink-0 flex flex-col min-h-0 h-full">
                 <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden hide-scrollbar px-5">
                   <div
-                    className="min-h-full"
+                    className="min-h-full pt-6"
                     style={{
                       paddingBottom: isEditing && keyboardHeight > 0
                         ? keyboardHeight + 80
@@ -580,7 +593,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
 
             {/* Full text tab — scroll only inside this pane */}
             <div className={note.summary ? "w-1/2 flex-shrink-0 flex flex-col min-h-0 h-full" : "w-full flex flex-col min-h-0 h-full"}>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden hide-scrollbar px-5">
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden hide-scrollbar px-5 pt-6">
                 <div
                   className="min-h-full"
                   style={{

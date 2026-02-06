@@ -64,7 +64,7 @@ export const NoteTabs = ({ activeTab, onTabChange, hasSummary }: NoteTabsProps) 
   }
 
   return (
-    <div className="mb-6">
+    <div>
       <div 
         ref={containerRef}
         className="relative flex border-b border-[var(--separator)] px-5"

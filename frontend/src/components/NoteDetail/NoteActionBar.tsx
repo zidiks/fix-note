@@ -38,8 +38,9 @@ export const NoteActionBar = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{
         opacity: 1,
-        // When keyboard is open, bottom already positions us above it; don't add viewportOffset or bar jumps up
-        y: keyboardHeight > 0 ? 0 : (viewportOffset > 0 ? -viewportOffset : 0)
+        // When keyboard is open, shift bar up by viewportOffset so it stays at bottom of visible viewport.
+        // When keyboard closed, keep y: 0 so bar stays at bottom (never apply viewportOffset then or bar sticks to top).
+        y: keyboardHeight > 0 ? -viewportOffset : 0
       }}
       transition={{
         delay: 0.15,
