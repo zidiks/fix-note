@@ -136,6 +136,10 @@ export interface UsageStats {
 
 export interface SubscriptionInfo {
   plan: SubscriptionPlan
+  billing_period: BillingPeriod | null
+  is_recurring: boolean
+  is_canceled: boolean
+  canceled_at: string | null
   subscription_started_at: string | null
   subscription_expires_at: string | null
   trial_started_at: string | null
@@ -151,6 +155,12 @@ export interface InvoiceResponse {
   amount: number
   subscription_period: number | null
   is_recurring: boolean
+}
+
+export interface CancelSubscriptionResponse {
+  success: boolean
+  is_canceled: boolean
+  subscription_expires_at: string | null
 }
 
 // Sync types
@@ -368,6 +378,12 @@ export const api = {
     return fetchWithAuth('/subscription/invoice', {
       method: 'POST',
       body: JSON.stringify({ plan, billing_period: billingPeriod }),
+    })
+  },
+
+  async cancelMonthlySubscription(): Promise<CancelSubscriptionResponse> {
+    return fetchWithAuth('/subscription/cancel', {
+      method: 'POST',
     })
   },
   

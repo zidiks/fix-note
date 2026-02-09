@@ -20,11 +20,15 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
   void _onBack
 
   const { t, language } = useI18n()
-  const { subscription, getTrialDaysLeft, isTrialExpired } = useSubscription()
+  const { subscription, fetchSubscription, getTrialDaysLeft, isTrialExpired } = useSubscription()
   const { hapticImpact, hapticNotification, showPopup, tg } = useTelegram()
 
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [cancelStep, setCancelStep] = useState<0 | 1 | 2 | 3 | 4>(0)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelKeyword, setCancelKeyword] = useState('')
+  const [isCanceling, setIsCanceling] = useState(false)
 
   const currentPlan = subscription?.plan || 'trial'
   const trialDays = getTrialDaysLeft()
@@ -36,6 +40,15 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
     ultra: 2,
   }
   const currentRank = planRank[currentPlan]
+  const activePaidPlan = currentPlan === 'pro' || currentPlan === 'ultra' ? currentPlan : null
+  const isPaidPlan = activePaidPlan !== null
+  const isCancelableMonthly =
+    isPaidPlan &&
+    subscription?.billing_period === 'monthly' &&
+    !subscription?.is_canceled
+  const subscriptionEndsAt = subscription?.subscription_expires_at
+    ? new Date(subscription.subscription_expires_at).toLocaleDateString(language === 'ru' ? 'ru-RU' : 'en-US')
+    : null
 
   const features: PlanFeature[] = [
     {
@@ -64,15 +77,19 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
     },
   ]
 
-  const handleSubscribe = async (plan: 'pro' | 'ultra') => {
-    if (currentPlan === plan) return
+  const handleSubscribe = async (
+    plan: 'pro' | 'ultra',
+    force = false,
+    periodOverride?: BillingPeriod
+  ) => {
+    if (!force && currentPlan === plan) return
 
     hapticImpact('medium')
     setIsProcessing(true)
 
     try {
       const { api } = await import('../api/client')
-      const invoice = await api.createInvoice(plan, billingPeriod)
+      const invoice = await api.createInvoice(plan, periodOverride ?? billingPeriod)
 
       if (tg && invoice.invoice_link) {
         tg.openTelegramLink(invoice.invoice_link)
@@ -89,6 +106,41 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
       })
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const resetCancelFlow = () => {
+    setCancelStep(0)
+    setCancelReason('')
+    setCancelKeyword('')
+  }
+
+  const handleCancelSubscription = async () => {
+    hapticImpact('heavy')
+    setIsCanceling(true)
+    try {
+      const { api } = await import('../api/client')
+      await api.cancelMonthlySubscription()
+      await fetchSubscription()
+      hapticNotification('success')
+      showPopup({
+        title: language === 'ru' ? 'Автопродление отключено' : 'Auto-renew disabled',
+        message:
+          language === 'ru'
+            ? 'Подписка останется активной до конца оплаченного периода.'
+            : 'Subscription will remain active until the end of the paid period.',
+        buttons: [{ type: 'ok' }],
+      })
+      resetCancelFlow()
+    } catch (error) {
+      hapticNotification('error')
+      showPopup({
+        title: t('error'),
+        message: (error as Error).message || t('tryAgain'),
+        buttons: [{ type: 'ok' }],
+      })
+    } finally {
+      setIsCanceling(false)
     }
   }
 
@@ -113,10 +165,26 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
     }
     const targetRank = planRank[targetPlan]
     if (targetRank < currentRank) {
-      return t('downgrade')
+      return language === 'ru' ? 'Понизить' : 'Downgrade'
     }
     return t('upgrade')
   }
+
+  const cancelConfirmWord = language === 'ru' ? 'ОТМЕНА' : 'CANCEL'
+  const isCancelKeywordValid = cancelKeyword.trim().toUpperCase() === cancelConfirmWord
+  const cancelReasons = language === 'ru'
+    ? [
+        'Редко пользуюсь',
+        'Дорого',
+        'Не нашел нужных функций',
+        'Пока просто пауза',
+      ]
+    : [
+        'I use it rarely',
+        'Too expensive',
+        'Missing features',
+        'Just pausing for now',
+      ]
 
   const renderPlanCard = (plan: 'pro' | 'ultra') => {
     const details = PLAN_DETAILS[plan]
@@ -192,7 +260,7 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
             background: isCurrent ? 'var(--text-tertiary)' : details.gradient,
             opacity: isCurrent ? 0.5 : 1,
           }}
-          disabled={isCurrent || isProcessing}
+          disabled={isCurrent || isProcessing || isCanceling}
           onClick={() => handleSubscribe(plan)}
         >
           {isProcessing ? (
@@ -314,6 +382,51 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
         {renderPlanCard('ultra')}
       </div>
 
+      {isPaidPlan && subscription?.billing_period === 'monthly' && (
+        <div className="px-4 mb-6">
+          <div
+            className="rounded-2xl p-4 border"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,59,48,0.08) 0%, rgba(10,10,12,0.95) 100%)',
+              borderColor: 'rgba(255,59,48,0.35)',
+            }}
+          >
+            <div className="mb-3">
+              <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {language === 'ru' ? 'Управление автопродлением' : 'Auto-renew management'}
+              </h3>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                {subscription?.is_canceled
+                  ? (language === 'ru'
+                    ? `Автопродление отключено. Доступ сохранится до ${subscriptionEndsAt || 'конца периода'}.`
+                    : `Auto-renew is disabled. Access stays active until ${subscriptionEndsAt || 'period end'}.`)
+                  : (language === 'ru'
+                    ? 'Подписка продлевается каждые 30 дней. Отмена доступна, но скрыта глубже в настройках.'
+                    : 'This plan renews every 30 days. Cancellation is available but intentionally buried.' )}
+              </p>
+            </div>
+
+            {!subscription?.is_canceled && isCancelableMonthly && (
+              <button
+                className="w-full py-3 rounded-xl font-semibold transition-all active:scale-[0.98]"
+                style={{
+                  background: 'rgba(255,59,48,0.14)',
+                  color: '#FF7A72',
+                  border: '1px solid rgba(255,59,48,0.35)',
+                }}
+                onClick={() => {
+                  hapticImpact('light')
+                  setCancelStep(1)
+                }}
+                disabled={isCanceling}
+              >
+                {language === 'ru' ? 'Отключить автопродление' : 'Disable auto-renew'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="px-4">
         <h2 className="text-lg font-bold mb-3" style={{ color: 'var(--text-primary)' }}>
           {t('features')}
@@ -365,6 +478,193 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
             : 'Payment via Telegram Stars ⭐. Monthly plan auto-renews, yearly plan is billed once per year.'}
         </p>
       </div>
+
+      {cancelStep > 0 && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end p-3">
+          <motion.div
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 24, opacity: 0 }}
+            className="w-full rounded-2xl p-4 border relative"
+            style={{
+              background: 'linear-gradient(180deg, rgba(22,22,24,0.98) 0%, rgba(6,6,8,1) 100%)',
+              borderColor: 'rgba(255,255,255,0.08)',
+            }}
+          >
+            <button
+              className="absolute top-2 right-2 text-[10px] px-1 py-0.5 rounded opacity-20 hover:opacity-40"
+              style={{ color: 'var(--text-tertiary)' }}
+              onClick={resetCancelFlow}
+            >
+              ×
+            </button>
+
+            <div className="mb-3 pr-6">
+              <div className="text-[11px] mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                {language === 'ru' ? `Шаг ${cancelStep} из 4` : `Step ${cancelStep} of 4`}
+              </div>
+              <div className="w-full h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${(cancelStep / 4) * 100}%`,
+                    background: 'linear-gradient(90deg, #FF9500 0%, #FF3B30 100%)',
+                  }}
+                />
+              </div>
+            </div>
+
+            {cancelStep === 1 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                  {language === 'ru' ? 'Не уходите так быстро' : 'Wait before you leave'}
+                </h3>
+                <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+                  {language === 'ru'
+                    ? 'После отмены вы потеряете автопродление и рискуете остаться без AI-функций в самый нужный момент.'
+                    : 'After cancellation you lose auto-renew and may unexpectedly lose AI features.'}
+                </p>
+                <button
+                  className="w-full py-3 rounded-xl font-semibold text-white mb-2"
+                  style={{ background: PLAN_DETAILS.ultra.gradient }}
+                  onClick={resetCancelFlow}
+                >
+                  {language === 'ru' ? 'Оставить как есть' : 'Keep subscription'}
+                </button>
+                <button
+                  className="w-full py-3 rounded-xl font-medium"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                  onClick={() => setCancelStep(2)}
+                >
+                  {language === 'ru' ? 'Все равно продолжить' : 'Continue anyway'}
+                </button>
+              </div>
+            )}
+
+            {cancelStep === 2 && activePaidPlan && (
+              <div>
+                <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                  {language === 'ru' ? 'Сначала лучше так:' : 'Better option first:'}
+                </h3>
+                <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  {language === 'ru'
+                    ? 'Переключитесь на годовой план и платите реже. Так вы сохраните функции и снизите риск пропуска продления.'
+                    : 'Switch to yearly billing to pay less often and keep all features uninterrupted.'}
+                </p>
+                <div className="text-xs mb-4" style={{ color: 'var(--success)' }}>
+                  {language === 'ru'
+                    ? `${PRICING[activePaidPlan].yearly} ⭐ в год вместо ${PRICING[activePaidPlan].monthly * 12} ⭐`
+                    : `${PRICING[activePaidPlan].yearly} ⭐ yearly instead of ${PRICING[activePaidPlan].monthly * 12} ⭐`}
+                </div>
+                <button
+                  className="w-full py-3 rounded-xl font-semibold text-white mb-2"
+                  style={{ background: PLAN_DETAILS.pro.gradient }}
+                  onClick={async () => {
+                    setBillingPeriod('yearly')
+                    await handleSubscribe(activePaidPlan, true, 'yearly')
+                    resetCancelFlow()
+                  }}
+                >
+                  {language === 'ru' ? 'Перейти на годовой план' : 'Switch to yearly'}
+                </button>
+                <button
+                  className="w-full py-3 rounded-xl font-medium"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                  onClick={() => setCancelStep(3)}
+                >
+                  {language === 'ru' ? 'Нет, хочу отменить' : 'No, continue cancel'}
+                </button>
+              </div>
+            )}
+
+            {cancelStep === 3 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                  {language === 'ru' ? 'Почему хотите отключить?' : 'Why are you leaving?'}
+                </h3>
+                <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  {language === 'ru'
+                    ? 'Выберите причину. Это обязательный шаг перед отменой.'
+                    : 'Pick one reason. This step is required before cancellation.'}
+                </p>
+                <div className="space-y-2 mb-4">
+                  {cancelReasons.map((reason) => (
+                    <button
+                      key={reason}
+                      className="w-full text-left px-3 py-2 rounded-xl border text-sm"
+                      style={{
+                        borderColor: cancelReason === reason ? 'var(--accent)' : 'rgba(255,255,255,0.08)',
+                        background: cancelReason === reason ? 'rgba(0,122,255,0.16)' : 'rgba(255,255,255,0.03)',
+                        color: 'var(--text-primary)',
+                      }}
+                      onClick={() => setCancelReason(reason)}
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="w-full py-3 rounded-xl font-semibold text-white mb-2 disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #FF9500 0%, #FF3B30 100%)' }}
+                  disabled={!cancelReason}
+                  onClick={() => setCancelStep(4)}
+                >
+                  {language === 'ru' ? 'Продолжить отмену' : 'Continue cancellation'}
+                </button>
+                <button
+                  className="w-full py-3 rounded-xl font-medium"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                  onClick={() => setCancelStep(2)}
+                >
+                  {language === 'ru' ? 'Назад' : 'Back'}
+                </button>
+              </div>
+            )}
+
+            {cancelStep === 4 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                  {language === 'ru' ? 'Финальное подтверждение' : 'Final confirmation'}
+                </h3>
+                <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  {language === 'ru'
+                    ? `Введите слово "${cancelConfirmWord}", чтобы отключить автопродление.`
+                    : `Type "${cancelConfirmWord}" to disable auto-renew.`}
+                </p>
+                <input
+                  className="w-full px-3 py-3 rounded-xl border mb-4 text-sm outline-none"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                    borderColor: 'rgba(255,255,255,0.12)',
+                    color: 'var(--text-primary)',
+                  }}
+                  value={cancelKeyword}
+                  onChange={(e) => setCancelKeyword(e.target.value)}
+                  placeholder={cancelConfirmWord}
+                />
+                <button
+                  className="w-full py-3 rounded-xl font-semibold text-white mb-2 disabled:opacity-40"
+                  style={{ background: '#FF3B30' }}
+                  disabled={!isCancelKeywordValid || isCanceling}
+                  onClick={handleCancelSubscription}
+                >
+                  {isCanceling
+                    ? (language === 'ru' ? 'Отменяем...' : 'Canceling...')
+                    : (language === 'ru' ? 'Да, отключить автопродление' : 'Yes, disable auto-renew')}
+                </button>
+                <button
+                  className="w-full py-3 rounded-xl font-medium"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                  onClick={() => setCancelStep(3)}
+                  disabled={isCanceling}
+                >
+                  {language === 'ru' ? 'Назад' : 'Back'}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   )
 }

@@ -15,7 +15,7 @@ from .config import settings
 from .db.models import (
     Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse, 
     PublicNote, FTSSearchResult, ShareResponse, SubscriptionInfo, SubscriptionLimits,
-    UsageStats, InvoiceRequest, InvoiceResponse, LanguageUpdate,
+    UsageStats, InvoiceRequest, InvoiceResponse, CancelSubscriptionResponse, LanguageUpdate,
     # Sync models
     IntegrationConnectionPublic, NoteSyncStatus, SyncHistoryEntry,
     NotionOAuthStartResponse, NotionOAuthCallbackRequest, NotionOAuthCallbackResponse,
@@ -535,6 +535,62 @@ async def create_subscription_invoice(
     except Exception as e:
         logger.error(f"Failed to create invoice: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create invoice: {str(e)}")
+
+
+@router.post("/subscription/cancel", response_model=CancelSubscriptionResponse)
+async def cancel_monthly_subscription(user=Depends(get_current_user)):
+    """Cancel monthly Telegram Stars auto-renewal for current user."""
+    subscription = await notes_service.get_subscription_info(user.id)
+
+    if subscription.plan not in ("pro", "ultra"):
+        raise HTTPException(status_code=400, detail="No active paid subscription to cancel")
+    if subscription.billing_period != "monthly":
+        raise HTTPException(status_code=400, detail="Only monthly subscriptions can be canceled")
+    if subscription.is_canceled:
+        return CancelSubscriptionResponse(
+            success=True,
+            is_canceled=True,
+            subscription_expires_at=subscription.subscription_expires_at,
+        )
+
+    charge_id = await notes_service.get_latest_monthly_subscription_charge_id(user.id)
+    if not charge_id:
+        raise HTTPException(status_code=400, detail="Subscription charge ID not found")
+
+    bot_api_url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/editUserStarSubscription"
+    req_payload = {
+        "user_id": user.telegram_id,
+        "telegram_payment_charge_id": charge_id,
+        "is_canceled": True,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(bot_api_url, json=req_payload)
+
+        data = response.json() if response.content else {}
+        if (not response.is_success) or (not data.get("ok")):
+            error_description = data.get("description", "Unknown Telegram API error")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to cancel subscription: {error_description}",
+            )
+
+        updated = await notes_service.mark_subscription_canceled(user.id)
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to persist cancellation state")
+
+        refreshed = await notes_service.get_subscription_info(user.id)
+        return CancelSubscriptionResponse(
+            success=True,
+            is_canceled=True,
+            subscription_expires_at=refreshed.subscription_expires_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cancel subscription: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel subscription: {str(e)}")
 
 
 @router.put("/user/language")

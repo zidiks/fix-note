@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 
 export type SubscriptionPlan = 'free' | 'trial' | 'pro' | 'ultra'
 export type BillingPeriod = 'monthly' | 'yearly'
@@ -22,6 +22,10 @@ export interface UsageStats {
 
 export interface SubscriptionInfo {
   plan: SubscriptionPlan
+  billing_period: BillingPeriod | null
+  is_recurring: boolean
+  is_canceled: boolean
+  canceled_at: string | null
   subscription_started_at: string | null
   subscription_expires_at: string | null
   trial_started_at: string | null
@@ -41,25 +45,25 @@ export const PLAN_DETAILS: Record<SubscriptionPlan, {
     name: 'Free',
     color: '#8E8E93',
     gradient: 'linear-gradient(135deg, #8E8E93 0%, #636366 100%)',
-    icon: '📝',
+    icon: '\u{1F4DD}',
   },
   trial: {
     name: 'Trial',
     color: '#FF9500',
     gradient: 'linear-gradient(135deg, #FF9500 0%, #FF6B00 100%)',
-    icon: '⏱️',
+    icon: '\u{23F1}\u{FE0F}',
   },
   pro: {
     name: 'Pro',
     color: '#007AFF',
     gradient: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
-    icon: '⭐️',
+    icon: '\u{2B50}\u{FE0F}',
   },
   ultra: {
     name: 'Ultra',
     color: '#AF52DE',
     gradient: 'linear-gradient(135deg, #AF52DE 0%, #FF2D55 100%)',
-    icon: '💎',
+    icon: '\u{1F48E}',
   },
 }
 

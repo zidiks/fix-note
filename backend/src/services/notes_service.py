@@ -648,8 +648,29 @@ class NotesService:
         else:
             usage = UsageStats()
         
+        billing_period = user_data.get("subscription_billing_period")
+        is_recurring = bool(user_data.get("subscription_is_recurring", False))
+        is_canceled = bool(user_data.get("subscription_is_canceled", False))
+        canceled_at = user_data.get("subscription_canceled_at")
+
+        # Backward compatibility: infer billing state from latest payment for older rows.
+        if plan in ("pro", "ultra") and not billing_period:
+            latest_payment = self.client.table("payments").select(
+                "billing_period, is_recurring"
+            ).eq("user_id", str(user_id)).eq("status", "completed").order(
+                "created_at", desc=True
+            ).limit(1).execute()
+            if latest_payment.data:
+                payment = latest_payment.data[0]
+                billing_period = payment.get("billing_period")
+                is_recurring = bool(payment.get("is_recurring", is_recurring))
+
         return SubscriptionInfo(
             plan=plan,
+            billing_period=billing_period,
+            is_recurring=is_recurring,
+            is_canceled=is_canceled,
+            canceled_at=canceled_at,
             subscription_started_at=user_data.get("subscription_started_at"),
             subscription_expires_at=user_data.get("subscription_expires_at"),
             trial_started_at=user_data.get("trial_started_at"),
@@ -687,7 +708,7 @@ class NotesService:
             expires_at = subscription_expires_at
 
         user_lookup = self.client.table("users").select(
-            "id, subscription_started_at"
+            "id, subscription_started_at, subscription_telegram_payment_charge_id"
         ).eq("id", str(user_id)).execute()
         if not user_lookup.data:
             return False
@@ -698,9 +719,18 @@ class NotesService:
         started_at = now.isoformat()
         if existing_started_at and not is_first_recurring:
             started_at = existing_started_at
+        charge_id = (payment_data or {}).get("telegram_payment_charge_id") or existing_user.get(
+            "subscription_telegram_payment_charge_id"
+        )
+        is_recurring = bool((payment_data or {}).get("is_recurring", billing_period == "monthly"))
 
         result = self.client.table("users").update({
             "subscription_plan": plan,
+            "subscription_billing_period": billing_period,
+            "subscription_is_recurring": is_recurring,
+            "subscription_is_canceled": False,
+            "subscription_canceled_at": None,
+            "subscription_telegram_payment_charge_id": charge_id,
             "subscription_started_at": started_at,
             "subscription_expires_at": expires_at.isoformat(),
         }).eq("id", str(user_id)).execute()
@@ -730,7 +760,7 @@ class NotesService:
                 "invoice_payload": payment_data.get("invoice_payload"),
                 "subscription_period": payment_data.get("subscription_period"),
                 "subscription_expiration_at": expires_at.isoformat(),
-                "is_recurring": bool(payment_data.get("is_recurring", False)),
+                "is_recurring": is_recurring,
                 "is_first_recurring": bool(payment_data.get("is_first_recurring", False)),
             }
             try:
@@ -739,6 +769,36 @@ class NotesService:
                 logger.warning(f"Failed to persist payment metadata: {e}")
 
         return True
+
+    async def get_latest_monthly_subscription_charge_id(self, user_id: UUID | str) -> Optional[str]:
+        """Get latest Telegram charge id for monthly recurring subscription."""
+        user_result = self.client.table("users").select(
+            "subscription_telegram_payment_charge_id"
+        ).eq("id", str(user_id)).execute()
+        if user_result.data:
+            candidate = user_result.data[0].get("subscription_telegram_payment_charge_id")
+            if candidate:
+                return candidate
+
+        payment_result = self.client.table("payments").select(
+            "telegram_payment_charge_id"
+        ).eq("user_id", str(user_id)).eq("billing_period", "monthly").eq(
+            "status", "completed"
+        ).order("created_at", desc=True).limit(1).execute()
+
+        if payment_result.data:
+            return payment_result.data[0].get("telegram_payment_charge_id")
+        return None
+
+    async def mark_subscription_canceled(self, user_id: UUID | str) -> bool:
+        """Mark current recurring subscription as canceled in user profile."""
+        now = datetime.utcnow().isoformat()
+        result = self.client.table("users").update({
+            "subscription_is_canceled": True,
+            "subscription_canceled_at": now,
+            "subscription_is_recurring": False,
+        }).eq("id", str(user_id)).execute()
+        return len(result.data) > 0
 
     async def increment_usage(self, user_id: UUID, usage_type: str, amount: int = 1) -> bool:
         """Increment usage counter for a user."""

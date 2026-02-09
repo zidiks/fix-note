@@ -16,6 +16,11 @@ class User(BaseModel):
     first_name: Optional[str] = None
     language_code: str = "ru"
     subscription_plan: SubscriptionPlan = "trial"
+    subscription_billing_period: Optional[BillingPeriod] = None
+    subscription_is_recurring: bool = False
+    subscription_is_canceled: bool = False
+    subscription_canceled_at: Optional[datetime] = None
+    subscription_telegram_payment_charge_id: Optional[str] = None
     subscription_started_at: Optional[datetime] = None
     subscription_expires_at: Optional[datetime] = None
     trial_started_at: Optional[datetime] = None
@@ -152,6 +157,10 @@ class UsageStats(BaseModel):
 class SubscriptionInfo(BaseModel):
     """Subscription info response model."""
     plan: SubscriptionPlan
+    billing_period: Optional[BillingPeriod] = None
+    is_recurring: bool = False
+    is_canceled: bool = False
+    canceled_at: Optional[datetime] = None
     subscription_started_at: Optional[datetime] = None
     subscription_expires_at: Optional[datetime] = None
     trial_started_at: Optional[datetime] = None
@@ -174,6 +183,13 @@ class InvoiceResponse(BaseModel):
     amount: int
     subscription_period: Optional[int] = None
     is_recurring: bool = False
+
+
+class CancelSubscriptionResponse(BaseModel):
+    """Cancel subscription response model."""
+    success: bool
+    is_canceled: bool
+    subscription_expires_at: Optional[datetime] = None
 
 
 class LanguageUpdate(BaseModel):
