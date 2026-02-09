@@ -149,6 +149,8 @@ export interface InvoiceResponse {
   plan: SubscriptionPlan
   billing_period: BillingPeriod
   amount: number
+  subscription_period: number | null
+  is_recurring: boolean
 }
 
 // Sync types

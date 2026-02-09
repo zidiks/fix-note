@@ -218,12 +218,20 @@ class NotesService:
         user_id = str(uuid4())
         data_key = self.crypto.generate_data_key()
         wrapped = self.crypto.wrap_data_key(data_key, f"{user_id}:notes_key")
+        now = datetime.utcnow()
+        trial_ends_at = now + timedelta(days=5)
+
         new_user = {
             "id": user_id,
             "telegram_id": telegram_id,
             "username": username,
             "first_name": first_name,
             "language_code": language_code,
+            "subscription_plan": "trial",
+            "subscription_started_at": now.isoformat(),
+            "subscription_expires_at": trial_ends_at.isoformat(),
+            "trial_started_at": now.isoformat(),
+            "trial_ends_at": trial_ends_at.isoformat(),
             "notes_key_enc": wrapped,
             "notes_key_version": self.crypto.master_key_version,
         }
@@ -658,22 +666,79 @@ class NotesService:
         
         return len(result.data) > 0
 
-    async def activate_subscription(self, user_id: str | UUID, plan: str, billing_period: str) -> bool:
-        """Activate a subscription for user."""
+    async def activate_subscription(
+        self,
+        user_id: str | UUID,
+        plan: str,
+        billing_period: str = "monthly",
+        subscription_expires_at: Optional[datetime] = None,
+        payment_data: Optional[dict] = None,
+    ) -> bool:
+        """Activate/update a subscription for user and persist payment metadata."""
         now = datetime.utcnow()
-        
-        if billing_period == "monthly":
-            expires_at = now + timedelta(days=30)
-        else:  # yearly
-            expires_at = now + timedelta(days=365)
-        
+
+        # For recurring subscriptions Telegram provides the exact expiration timestamp.
+        if subscription_expires_at is None:
+            if billing_period == "monthly":
+                expires_at = now + timedelta(days=30)
+            else:
+                expires_at = now + timedelta(days=365)
+        else:
+            expires_at = subscription_expires_at
+
+        user_lookup = self.client.table("users").select(
+            "id, subscription_started_at"
+        ).eq("id", str(user_id)).execute()
+        if not user_lookup.data:
+            return False
+
+        existing_user = user_lookup.data[0]
+        is_first_recurring = bool((payment_data or {}).get("is_first_recurring"))
+        existing_started_at = existing_user.get("subscription_started_at")
+        started_at = now.isoformat()
+        if existing_started_at and not is_first_recurring:
+            started_at = existing_started_at
+
         result = self.client.table("users").update({
             "subscription_plan": plan,
-            "subscription_started_at": now.isoformat(),
+            "subscription_started_at": started_at,
             "subscription_expires_at": expires_at.isoformat(),
         }).eq("id", str(user_id)).execute()
-        
-        return len(result.data) > 0
+
+        if len(result.data) == 0:
+            return False
+
+        # Persist payment record (idempotent by Telegram charge id).
+        if payment_data:
+            telegram_charge_id = payment_data.get("telegram_payment_charge_id")
+            if telegram_charge_id:
+                existing_payment = self.client.table("payments").select("id").eq(
+                    "telegram_payment_charge_id", telegram_charge_id
+                ).execute()
+                if existing_payment.data:
+                    return True
+
+            payment_record = {
+                "user_id": str(user_id),
+                "telegram_payment_charge_id": telegram_charge_id,
+                "provider_payment_charge_id": payment_data.get("provider_payment_charge_id"),
+                "amount": int(payment_data.get("amount", 0)),
+                "currency": payment_data.get("currency", "XTR"),
+                "plan": plan,
+                "billing_period": billing_period,
+                "status": "completed",
+                "invoice_payload": payment_data.get("invoice_payload"),
+                "subscription_period": payment_data.get("subscription_period"),
+                "subscription_expiration_at": expires_at.isoformat(),
+                "is_recurring": bool(payment_data.get("is_recurring", False)),
+                "is_first_recurring": bool(payment_data.get("is_first_recurring", False)),
+            }
+            try:
+                self.client.table("payments").insert(payment_record).execute()
+            except Exception as e:
+                logger.warning(f"Failed to persist payment metadata: {e}")
+
+        return True
 
     async def increment_usage(self, user_id: UUID, usage_type: str, amount: int = 1) -> bool:
         """Increment usage counter for a user."""

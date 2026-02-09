@@ -4,10 +4,12 @@ import hmac
 from urllib.parse import parse_qs
 from typing import Optional, List
 from uuid import UUID
+import uuid
 
 from fastapi import APIRouter, HTTPException, Depends, Header, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import httpx
 
 from .config import settings
 from .db.models import (
@@ -456,51 +458,80 @@ async def create_subscription_invoice(
     request: InvoiceRequest,
     user=Depends(get_current_user)
 ):
-    """Create a Telegram Stars invoice for subscription."""
-    from .config import settings
-    
-    # Pricing in Telegram Stars
-    pricing = {
+    """Create Telegram Stars invoice for subscription."""
+    monthly_subscription_period = 30 * 24 * 60 * 60  # 2592000 (Bot API recurring requirement)
+    fallback_pricing = {
         "pro": {"monthly": 350, "yearly": 3500},
         "ultra": {"monthly": 800, "yearly": 8000},
     }
-    
+
     plan = request.plan
     period = request.billing_period
-    amount = pricing[plan][period]
-    
-    # Create invoice link through bot
-    if _bot_instance is None:
-        raise HTTPException(status_code=503, detail="Bot not available")
-    
+    amount = fallback_pricing[plan][period]
+
+    # Prefer dynamic pricing from DB if available.
+    limits = notes_service.client.table("subscription_limits").select(
+        "price_monthly_stars, price_yearly_stars"
+    ).eq("plan", plan).execute()
+    if limits.data:
+        monthly_price = limits.data[0].get("price_monthly_stars")
+        yearly_price = limits.data[0].get("price_yearly_stars")
+        if period == "monthly" and monthly_price:
+            amount = int(monthly_price)
+        if period == "yearly" and yearly_price:
+            amount = int(yearly_price)
+
     try:
-        from aiogram.types import LabeledPrice
-        import uuid
-        
         # Create invoice payload
-        title = f"FixNote {plan.title()} - {period.title()}"
-        description = f"Subscription to FixNote {plan.title()} plan ({period})"
-        
+        if period == "monthly":
+            title = f"FixNote {plan.title()} Monthly"
+            description = f"Recurring {plan.title()} subscription (30 days, auto-renew)"
+        else:
+            title = f"FixNote {plan.title()} Yearly"
+            description = f"{plan.title()} subscription billed yearly"
+
         # Generate unique payload for this purchase
-        payload = f"{user.id}:{plan}:{period}:{uuid.uuid4().hex[:8]}"
-        
-        # Create invoice link using Telegram Stars (XTR)
-        # For Stars payments, provider_token must be empty string
-        invoice_link = await _bot_instance.create_invoice_link(
-            title=title,
-            description=description,
-            payload=payload,
-            provider_token="",  # Empty for Telegram Stars
-            currency="XTR",
-            prices=[LabeledPrice(label=title, amount=amount)],
-        )
-        
+        payload = f"sub:v1:{user.id}:{plan}:{period}:{uuid.uuid4().hex[:12]}"
+
+        # Call Bot API directly to use newest fields even on older aiogram versions.
+        bot_api_url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/createInvoiceLink"
+        req_payload = {
+            "title": title,
+            "description": description,
+            "payload": payload,
+            "provider_token": "",
+            "currency": "XTR",
+            "prices": [{"label": title, "amount": amount}],
+        }
+        # Telegram Stars recurring subscriptions currently support 30-day period.
+        if period == "monthly":
+            req_payload["subscription_period"] = monthly_subscription_period
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(bot_api_url, json=req_payload)
+
+        data = response.json() if response.content else {}
+        if (not response.is_success) or (not data.get("ok")):
+            error_description = data.get("description", "Unknown Telegram API error")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to create recurring invoice: {error_description}",
+            )
+
+        invoice_link = data.get("result")
+        if not invoice_link:
+            raise HTTPException(status_code=502, detail="Telegram API returned empty invoice link")
+
         return InvoiceResponse(
             invoice_link=invoice_link,
             plan=plan,
             billing_period=period,
-            amount=amount
+            amount=amount,
+            subscription_period=monthly_subscription_period if period == "monthly" else None,
+            is_recurring=period == "monthly",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create invoice: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create invoice: {str(e)}")

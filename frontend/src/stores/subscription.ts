@@ -66,12 +66,12 @@ export const PLAN_DETAILS: Record<SubscriptionPlan, {
 // Pricing in Telegram Stars (XTR)
 export const PRICING = {
   pro: {
-    monthly: 350, // ~$7
-    yearly: 3500, // ~$70
+    monthly: 350,
+    yearly: 3500,
   },
   ultra: {
-    monthly: 800, // ~$16
-    yearly: 8000, // ~$160
+    monthly: 800,
+    yearly: 8000,
   },
 } as const
 

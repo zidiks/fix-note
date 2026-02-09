@@ -172,6 +172,8 @@ class InvoiceResponse(BaseModel):
     plan: str
     billing_period: str
     amount: int
+    subscription_period: Optional[int] = None
+    is_recurring: bool = False
 
 
 class LanguageUpdate(BaseModel):

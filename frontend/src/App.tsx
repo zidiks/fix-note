@@ -12,6 +12,7 @@ import { LanguagePage } from './components/LanguagePage'
 import { SubscriptionPage } from './components/SubscriptionPage'
 import { SyncSettingsPage } from './components/SyncSettingsPage'
 import { Paywall } from './components/Paywall'
+import { EntryPaywall } from './components/EntryPaywall'
 import { Note, api } from './api/client'
 import { useNotes } from './hooks/useNotes'
 import { useI18n } from './i18n'
@@ -38,12 +39,14 @@ function App() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [viewState, setViewState] = useState<ViewState>('list')
   const [shareToken, setShareToken] = useState<string | null>(null)
+  const [isEntryPaywallOpen, setIsEntryPaywallOpen] = useState(false)
   const [paywallFeature, setPaywallFeature] = useState<'summary' | 'voice' | 'chat' | 'sync' | null>(null)
   const { deleteNote, refetchNotes } = useNotes()
   const { t, setLanguage } = useI18n()
-  const { fetchSubscription } = useSubscription()
+  const { subscription, fetchSubscription } = useSubscription()
   const listRef = useRef<HTMLDivElement | null>(null)
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null)
+  const entryPaywallShownRef = useRef(false)
   const pullStartYRef = useRef(0)
   const pullDistanceRef = useRef(0)
   const activePointerIdRef = useRef<number | null>(null)
@@ -111,6 +114,18 @@ function App() {
   // Use Telegram theme hook to manage header and background colors based on view state
   useTelegramTheme(viewState)
 
+  // Show entry paywall for trial/free users on app entry.
+  useEffect(() => {
+    if (entryPaywallShownRef.current) return
+    if (!subscription) return
+    if (shareToken || selectedNote || viewState !== 'list') return
+
+    if (subscription.plan === 'trial' || subscription.plan === 'free') {
+      setIsEntryPaywallOpen(true)
+      entryPaywallShownRef.current = true
+    }
+  }, [subscription, shareToken, selectedNote, viewState])
+
   // Handle Telegram BackButton
   const handleBack = useCallback(() => {
     if (viewState === 'detail') {
@@ -170,6 +185,10 @@ function App() {
   
   const closePaywall = () => {
     setPaywallFeature(null)
+  }
+
+  const closeEntryPaywall = () => {
+    setIsEntryPaywallOpen(false)
   }
   
   const handlePaywallUpgrade = () => {
@@ -640,6 +659,12 @@ function App() {
       </AnimatePresence>
       
       {/* Paywall Modal */}
+      <EntryPaywall
+        isOpen={isEntryPaywallOpen}
+        onClose={closeEntryPaywall}
+      />
+
+      {/* Feature Paywall Modal */}
       <Paywall
         isOpen={paywallFeature !== null}
         onClose={closePaywall}

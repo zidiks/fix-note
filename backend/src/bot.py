@@ -2,6 +2,7 @@ import logging
 import asyncio
 from collections import defaultdict
 from typing import List, Optional
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
@@ -1001,22 +1002,62 @@ async def process_successful_payment(message: Message):
     if not payment:
         return
     
-    # Parse payload: user_id:plan:billing_period:unique_id
+    # Parse payload: sub:v1:user_id:plan:billing_period:nonce
     try:
         payload_parts = payment.invoice_payload.split(":")
-        if len(payload_parts) < 3:
+        billing_period = "monthly"
+        if len(payload_parts) >= 6 and payload_parts[0] == "sub":
+            # New payload format: sub:v1:user_id:plan:billing_period:nonce
+            user_uuid = payload_parts[2]
+            plan = payload_parts[3]
+            billing_period = payload_parts[4] or "monthly"
+        elif len(payload_parts) >= 5 and payload_parts[0] == "sub":
+            # Backward compatibility for early v1 payload without explicit billing_period
+            user_uuid = payload_parts[2]
+            plan = payload_parts[3]
+        elif len(payload_parts) >= 3:
+            # Backward compatibility with old payload format: user_id:plan:billing_period:nonce
+            user_uuid = payload_parts[0]
+            plan = payload_parts[1]
+            billing_period = payload_parts[2] or "monthly"
+        else:
             logger.error(f"Invalid payment payload: {payment.invoice_payload}")
             return
-        
-        user_uuid = payload_parts[0]
-        plan = payload_parts[1]
-        billing_period = payload_parts[2]
-        
-        # Activate subscription
+
+        # New Bot API fields for recurring payments
+        subscription_expiration_ts = getattr(payment, "subscription_expiration_date", None)
+        is_recurring = bool(getattr(payment, "is_recurring", False))
+        is_first_recurring = bool(getattr(payment, "is_first_recurring", False))
+
+        # Fallback for older aiogram versions
+        if hasattr(payment, "model_extra") and isinstance(payment.model_extra, dict):
+            subscription_expiration_ts = payment.model_extra.get(
+                "subscription_expiration_date",
+                subscription_expiration_ts,
+            )
+            is_recurring = bool(payment.model_extra.get("is_recurring", is_recurring))
+            is_first_recurring = bool(payment.model_extra.get("is_first_recurring", is_first_recurring))
+
+        expires_at = None
+        if subscription_expiration_ts:
+            expires_at = datetime.utcfromtimestamp(int(subscription_expiration_ts))
+
+        # Activate/extend subscription and store payment metadata
         success = await notes_service.activate_subscription(
             user_id=user_uuid,
             plan=plan,
-            billing_period=billing_period
+            billing_period=billing_period,
+            subscription_expires_at=expires_at,
+            payment_data={
+                "invoice_payload": payment.invoice_payload,
+                "telegram_payment_charge_id": payment.telegram_payment_charge_id,
+                "provider_payment_charge_id": payment.provider_payment_charge_id,
+                "amount": payment.total_amount,
+                "currency": payment.currency,
+                "subscription_period": 30 * 24 * 60 * 60 if billing_period == "monthly" else None,
+                "is_recurring": is_recurring,
+                "is_first_recurring": is_first_recurring,
+            },
         )
         
         if success:
@@ -1027,16 +1068,30 @@ async def process_successful_payment(message: Message):
             }
             plan_name = plan_names.get(plan, plan.title())
             
-            period_text = "месяц" if billing_period == "monthly" else "год"
-            
+            if billing_period == "yearly":
+                payment_kind = "Годовая подписка оплачена и активирована."
+            elif is_recurring and not is_first_recurring:
+                payment_kind = "Платеж продлил вашу подписку на следующий период."
+            elif is_first_recurring:
+                payment_kind = "Ежемесячная подписка успешно активирована."
+            else:
+                payment_kind = "Платеж успешно получен."
+
             await message.answer(
                 f"🎉 **Подписка {plan_name} активирована!**\n\n"
-                f"Ваша подписка действует на {period_text}.\n"
+                f"{payment_kind}\n"
                 f"Спасибо за поддержку! ❤️",
                 parse_mode=ParseMode.MARKDOWN
             )
-            
-            logger.info(f"Subscription activated: user={user_uuid}, plan={plan}, period={billing_period}")
+
+            logger.info(
+                "Subscription activated: user=%s, plan=%s, recurring=%s, first=%s, expires=%s",
+                user_uuid,
+                plan,
+                is_recurring,
+                is_first_recurring,
+                subscription_expiration_ts,
+            )
         else:
             await message.answer(
                 "⚠️ Платёж получен, но возникла ошибка при активации подписки. "
