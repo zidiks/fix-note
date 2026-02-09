@@ -29,6 +29,13 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
   const currentPlan = subscription?.plan || 'trial'
   const trialDays = getTrialDaysLeft()
   const trialExpired = isTrialExpired()
+  const planRank: Record<'free' | 'trial' | 'pro' | 'ultra', number> = {
+    free: 0,
+    trial: 0,
+    pro: 1,
+    ultra: 2,
+  }
+  const currentRank = planRank[currentPlan]
 
   const features: PlanFeature[] = [
     {
@@ -50,22 +57,10 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
       ultra: language === 'ru' ? 'Быстрый + контекст' : 'Fast + context',
     },
     {
-      key: 'Notion',
+      key: t('syncNotes'),
       free: '✖',
-      pro: language === 'ru' ? 'Скоро' : 'Soon',
-      ultra: language === 'ru' ? 'Авто-синк' : 'Auto-sync',
-    },
-    {
-      key: 'Obsidian',
-      free: '✖',
-      pro: language === 'ru' ? 'Скоро' : 'Soon',
-      ultra: language === 'ru' ? 'Авто-синк' : 'Auto-sync',
-    },
-    {
-      key: 'Anytype',
-      free: '✖',
-      pro: language === 'ru' ? 'Скоро' : 'Soon',
-      ultra: language === 'ru' ? 'Авто-синк' : 'Auto-sync',
+      pro: t('manualSync'),
+      ultra: t('autoSync'),
     },
   ]
 
@@ -107,6 +102,20 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
     const yearlyCost = prices.yearly
     const monthlyForYear = prices.monthly * 12
     return Math.round(((monthlyForYear - yearlyCost) / monthlyForYear) * 100)
+  }
+
+  const getActionLabel = (targetPlan: 'pro' | 'ultra') => {
+    if (currentPlan === targetPlan) {
+      return t('currentPlan')
+    }
+    if (currentPlan === 'free' || currentPlan === 'trial') {
+      return t('subscribePlan')
+    }
+    const targetRank = planRank[targetPlan]
+    if (targetRank < currentRank) {
+      return t('downgrade')
+    }
+    return t('upgrade')
   }
 
   const renderPlanCard = (plan: 'pro' | 'ultra') => {
@@ -190,10 +199,8 @@ export const SubscriptionPage = ({ onBack: _onBack }: SubscriptionPageProps) => 
             <div className="spinner mx-auto" style={{ width: 20, height: 20, borderWidth: 2 }} />
           ) : isCurrent ? (
             t('currentPlan')
-          ) : currentPlan === 'free' || currentPlan === 'trial' ? (
-            t('subscribePlan')
           ) : (
-            t('upgrade')
+            getActionLabel(plan)
           )}
         </button>
       </motion.div>
