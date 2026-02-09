@@ -43,6 +43,7 @@ function App() {
   const { t, setLanguage } = useI18n()
   const { fetchSubscription } = useSubscription()
   const listRef = useRef<HTMLDivElement | null>(null)
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null)
   const pullStartYRef = useRef(0)
   const pullDistanceRef = useRef(0)
   const activePointerIdRef = useRef<number | null>(null)
@@ -261,6 +262,11 @@ function App() {
     setIsPulling(value)
   }, [])
 
+  const setListContainerRef = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node
+    setListElement(node)
+  }, [])
+
   useEffect(() => {
     if (!isPullEnabled) {
       setPull(0)
@@ -346,7 +352,7 @@ function App() {
   }
 
   useEffect(() => {
-    const container = listRef.current
+    const container = listElement
     if (!container) return
 
     const handleTouchStart = (event: TouchEvent) => {
@@ -441,7 +447,7 @@ function App() {
       container.removeEventListener('touchend', handleTouchEnd)
       container.removeEventListener('touchcancel', handleTouchCancel)
     }
-  }, [isPullEnabled, isRefreshing, isPullArmed, hapticImpact, refetchNotes, setPull, setPulling])
+  }, [isPullEnabled, isRefreshing, isPullArmed, hapticImpact, listElement, refetchNotes, setPull, setPulling])
 
   const handleSelectNote = (note: Note) => {
     setSelectedNote(note)
@@ -580,7 +586,7 @@ function App() {
                 height: '100%',
                 maxHeight: '100%'
               }}
-              ref={listRef}
+              ref={setListContainerRef}
               onPointerDown={handlePullStart}
               onPointerMove={handlePullMove}
               onPointerUp={handlePullEnd}
