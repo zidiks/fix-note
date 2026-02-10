@@ -1,5 +1,7 @@
-import logging
+﻿import logging
 import asyncio
+import html
+import re
 from collections import defaultdict
 from typing import List, Optional
 from datetime import datetime
@@ -52,6 +54,29 @@ media_group_buffer: dict[str, list[Message]] = defaultdict(list)
 media_group_tasks: dict[str, asyncio.Task] = {}
 
 
+def format_ai_answer_html(answer: str) -> str:
+    """Render model output to Telegram-safe HTML with light formatting."""
+    if not answer:
+        return "рџ’Ў <b>РћС‚РІРµС‚:</b>\n\nРќРµ СѓРґР°Р»РѕСЃСЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ РѕС‚РІРµС‚."
+
+    escaped = html.escape(answer.strip())
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
+    escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
+
+    lines: List[str] = []
+    for line in escaped.splitlines():
+        line = re.sub(r"^\s*#{1,6}\s+(.*)$", r"<b>\1</b>", line)
+        line = re.sub(r"^\s*[\-\*]\s+", "вЂў ", line)
+        lines.append(line)
+
+    body = "\n".join(lines).strip()
+    # Keep safe margin under Telegram 4096 char limit for edited messages.
+    if len(body) > 3600:
+        body = body[:3597] + "..."
+
+    return f"рџ’Ў <b>РћС‚РІРµС‚:</b>\n\n{body}"
+
+
 async def get_telegram_file_url(file_id: str) -> Optional[str]:
     """Get permanent Telegram file URL from file_id."""
     try:
@@ -91,7 +116,7 @@ def get_note_open_keyboard(note_id: str) -> Optional[InlineKeyboardMarkup]:
     
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="📖 Открыть заметку",
+            text="рџ“– РћС‚РєСЂС‹С‚СЊ Р·Р°РјРµС‚РєСѓ",
             web_app=WebAppInfo(url=f"{settings.public_url}/app?note={note_id}")
         )]
     ])
@@ -110,7 +135,7 @@ def get_notes_inline_keyboard() -> InlineKeyboardMarkup:
     if settings.public_url:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text="📋 Открыть заметки",
+                text="рџ“‹ РћС‚РєСЂС‹С‚СЊ Р·Р°РјРµС‚РєРё",
                 web_app=WebAppInfo(url=f"{settings.public_url}/app")
             )]
         ])
@@ -132,7 +157,7 @@ def check_user_allowed(user_id: int) -> bool:
 async def cmd_start(message: Message):
     """Handle /start command."""
     if not check_user_allowed(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён.")
+        await message.answer("в›” Р”РѕСЃС‚СѓРї Р·Р°РїСЂРµС‰С‘РЅ.")
         return
     
     user = await notes_service.get_or_create_user(
@@ -142,19 +167,19 @@ async def cmd_start(message: Message):
         language_code=message.from_user.language_code or "ru"
     )
     
-    welcome_text = f"""👋 Привет, {message.from_user.first_name or 'друг'}!
+    welcome_text = f"""рџ‘‹ РџСЂРёРІРµС‚, {message.from_user.first_name or 'РґСЂСѓРі'}!
 
-Я бот для голосовых и текстовых заметок с AI-возможностями:
+РЇ Р±РѕС‚ РґР»СЏ РіРѕР»РѕСЃРѕРІС‹С… Рё С‚РµРєСЃС‚РѕРІС‹С… Р·Р°РјРµС‚РѕРє СЃ AI-РІРѕР·РјРѕР¶РЅРѕСЃС‚СЏРјРё:
 
-🎤 **Голосовые заметки** — отправь голосовое сообщение, я транскрибирую его и создам краткое саммари
+рџЋ¤ **Р“РѕР»РѕСЃРѕРІС‹Рµ Р·Р°РјРµС‚РєРё** вЂ” РѕС‚РїСЂР°РІСЊ РіРѕР»РѕСЃРѕРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ, СЏ С‚СЂР°РЅСЃРєСЂРёР±РёСЂСѓСЋ РµРіРѕ Рё СЃРѕР·РґР°Рј РєСЂР°С‚РєРѕРµ СЃР°РјРјР°СЂРё
 
-📝 **Текстовые заметки** — просто напиши текст, и я сохраню его как заметку
+рџ“ќ **РўРµРєСЃС‚РѕРІС‹Рµ Р·Р°РјРµС‚РєРё** вЂ” РїСЂРѕСЃС‚Рѕ РЅР°РїРёС€Рё С‚РµРєСЃС‚, Рё СЏ СЃРѕС…СЂР°РЅСЋ РµРіРѕ РєР°Рє Р·Р°РјРµС‚РєСѓ
 
-🔍 **Умный поиск** — используй команду /ask чтобы задать вопрос по своим заметкам
+рџ”Ќ **РЈРјРЅС‹Р№ РїРѕРёСЃРє** вЂ” РёСЃРїРѕР»СЊР·СѓР№ РєРѕРјР°РЅРґСѓ /ask С‡С‚РѕР±С‹ Р·Р°РґР°С‚СЊ РІРѕРїСЂРѕСЃ РїРѕ СЃРІРѕРёРј Р·Р°РјРµС‚РєР°Рј
 
-📋 **Mini App** — открой все заметки в удобном интерфейсе
+рџ“‹ **Mini App** вЂ” РѕС‚РєСЂРѕР№ РІСЃРµ Р·Р°РјРµС‚РєРё РІ СѓРґРѕР±РЅРѕРј РёРЅС‚РµСЂС„РµР№СЃРµ
 
-Начни с отправки голосового или текстового сообщения!"""
+РќР°С‡РЅРё СЃ РѕС‚РїСЂР°РІРєРё РіРѕР»РѕСЃРѕРІРѕРіРѕ РёР»Рё С‚РµРєСЃС‚РѕРІРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ!"""
     
     await message.answer(
         welcome_text, 
@@ -165,30 +190,30 @@ async def cmd_start(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Handle /help command."""
-    help_text = """📖 **Справка по боту**
+    help_text = """рџ“– **РЎРїСЂР°РІРєР° РїРѕ Р±РѕС‚Сѓ**
 
-**Команды:**
-/start — Начать работу
-/help — Эта справка
-/ask <вопрос> — Задать вопрос по заметкам
-/notes — Открыть Mini App с заметками
-/stats — Статистика заметок
+**РљРѕРјР°РЅРґС‹:**
+/start вЂ” РќР°С‡Р°С‚СЊ СЂР°Р±РѕС‚Сѓ
+/help вЂ” Р­С‚Р° СЃРїСЂР°РІРєР°
+/ask <РІРѕРїСЂРѕСЃ> вЂ” Р—Р°РґР°С‚СЊ РІРѕРїСЂРѕСЃ РїРѕ Р·Р°РјРµС‚РєР°Рј
+/notes вЂ” РћС‚РєСЂС‹С‚СЊ Mini App СЃ Р·Р°РјРµС‚РєР°РјРё
+/stats вЂ” РЎС‚Р°С‚РёСЃС‚РёРєР° Р·Р°РјРµС‚РѕРє
 
-**Как использовать:**
+**РљР°Рє РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ:**
 
-🎤 **Голосовые заметки**
-Отправь голосовое сообщение. Бот автоматически:
-1. Транскрибирует аудио в текст
-2. Создаст краткое AI-саммари
-3. Сохранит заметку с возможностью поиска
+рџЋ¤ **Р“РѕР»РѕСЃРѕРІС‹Рµ Р·Р°РјРµС‚РєРё**
+РћС‚РїСЂР°РІСЊ РіРѕР»РѕСЃРѕРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ. Р‘РѕС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё:
+1. РўСЂР°РЅСЃРєСЂРёР±РёСЂСѓРµС‚ Р°СѓРґРёРѕ РІ С‚РµРєСЃС‚
+2. РЎРѕР·РґР°СЃС‚ РєСЂР°С‚РєРѕРµ AI-СЃР°РјРјР°СЂРё
+3. РЎРѕС…СЂР°РЅРёС‚ Р·Р°РјРµС‚РєСѓ СЃ РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊСЋ РїРѕРёСЃРєР°
 
-📝 **Текстовые заметки**
-Просто напиши текст — он сохранится как заметка.
+рџ“ќ **РўРµРєСЃС‚РѕРІС‹Рµ Р·Р°РјРµС‚РєРё**
+РџСЂРѕСЃС‚Рѕ РЅР°РїРёС€Рё С‚РµРєСЃС‚ вЂ” РѕРЅ СЃРѕС…СЂР°РЅРёС‚СЃСЏ РєР°Рє Р·Р°РјРµС‚РєР°.
 
-🔍 **RAG-поиск**
-Используй /ask чтобы задать вопрос. AI найдёт релевантные заметки и ответит на основе твоих записей.
+рџ”Ќ **RAG-РїРѕРёСЃРє**
+РСЃРїРѕР»СЊР·СѓР№ /ask С‡С‚РѕР±С‹ Р·Р°РґР°С‚СЊ РІРѕРїСЂРѕСЃ. AI РЅР°Р№РґС‘С‚ СЂРµР»РµРІР°РЅС‚РЅС‹Рµ Р·Р°РјРµС‚РєРё Рё РѕС‚РІРµС‚РёС‚ РЅР° РѕСЃРЅРѕРІРµ С‚РІРѕРёС… Р·Р°РїРёСЃРµР№.
 
-_Пример: /ask Что мы обсуждали на прошлой встрече?_"""
+_РџСЂРёРјРµСЂ: /ask Р§С‚Рѕ РјС‹ РѕР±СЃСѓР¶РґР°Р»Рё РЅР° РїСЂРѕС€Р»РѕР№ РІСЃС‚СЂРµС‡Рµ?_"""
 
     await message.answer(help_text, parse_mode=ParseMode.MARKDOWN)
 
@@ -201,7 +226,7 @@ async def cmd_notes(message: Message):
     
     if settings.public_url:
         await message.answer(
-            "📋 Открой заметки в Mini App:",
+            "рџ“‹ РћС‚РєСЂРѕР№ Р·Р°РјРµС‚РєРё РІ Mini App:",
             reply_markup=get_notes_inline_keyboard()
         )
     else:
@@ -215,12 +240,12 @@ async def cmd_notes(message: Message):
         notes = await notes_service.get_notes(user.id, limit=10)
         
         if not notes:
-            await message.answer("📝 У тебя пока нет заметок. Отправь голосовое или текстовое сообщение!")
+            await message.answer("рџ“ќ РЈ С‚РµР±СЏ РїРѕРєР° РЅРµС‚ Р·Р°РјРµС‚РѕРє. РћС‚РїСЂР°РІСЊ РіРѕР»РѕСЃРѕРІРѕРµ РёР»Рё С‚РµРєСЃС‚РѕРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ!")
             return
         
-        text_parts = ["📋 **Последние заметки:**\n"]
+        text_parts = ["рџ“‹ **РџРѕСЃР»РµРґРЅРёРµ Р·Р°РјРµС‚РєРё:**\n"]
         for i, note in enumerate(notes, 1):
-            icon = "🎤" if note.source == "voice" else "📝"
+            icon = "рџЋ¤" if note.source == "voice" else "рџ“ќ"
             preview = (note.summary or note.content)[:100]
             if len(note.summary or note.content) > 100:
                 preview += "..."
@@ -236,6 +261,9 @@ async def cmd_stats(message: Message):
     if not check_user_allowed(message.from_user.id):
         return
     
+    # Show immediate state so user gets instant feedback.
+    status_msg = await message.answer("РџСЂРёРЅСЏР» РІРѕРїСЂРѕСЃ, РіРѕС‚РѕРІР»СЋ РїРѕРёСЃРє...")
+
     user = await notes_service.get_or_create_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -244,14 +272,14 @@ async def cmd_stats(message: Message):
     
     stats = await notes_service.get_stats(user.id)
     
-    text = f"""📊 **Статистика заметок**
+    text = f"""рџ“Љ **РЎС‚Р°С‚РёСЃС‚РёРєР° Р·Р°РјРµС‚РѕРє**
 
-📝 Всего заметок: **{stats.total_notes}**
-🎤 Голосовых: **{stats.voice_notes}**
-✏️ Текстовых: **{stats.text_notes}**
+рџ“ќ Р’СЃРµРіРѕ Р·Р°РјРµС‚РѕРє: **{stats.total_notes}**
+рџЋ¤ Р“РѕР»РѕСЃРѕРІС‹С…: **{stats.voice_notes}**
+вњЏпёЏ РўРµРєСЃС‚РѕРІС‹С…: **{stats.text_notes}**
 
-📅 За эту неделю: **{stats.notes_this_week}**
-📆 За этот месяц: **{stats.notes_this_month}**"""
+рџ“… Р—Р° СЌС‚Сѓ РЅРµРґРµР»СЋ: **{stats.notes_this_week}**
+рџ“† Р—Р° СЌС‚РѕС‚ РјРµСЃСЏС†: **{stats.notes_this_month}**"""
     
     await message.answer(text, parse_mode=ParseMode.MARKDOWN)
 
@@ -267,11 +295,14 @@ async def cmd_ask(message: Message):
     
     if not question:
         await message.answer(
-            "❓ Укажи вопрос после команды.\n\n_Пример: /ask Что мы обсуждали на встрече?_",
+            "вќ“ РЈРєР°Р¶Рё РІРѕРїСЂРѕСЃ РїРѕСЃР»Рµ РєРѕРјР°РЅРґС‹.\n\n_РџСЂРёРјРµСЂ: /ask Р§С‚Рѕ РјС‹ РѕР±СЃСѓР¶РґР°Р»Рё РЅР° РІСЃС‚СЂРµС‡Рµ?_",
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+ 
+    # Immediate state to avoid silent waiting after /ask.
+    status_msg = await message.answer("⏳ Принял вопрос, готовлю поиск...")
+
     user = await notes_service.get_or_create_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -281,27 +312,31 @@ async def cmd_ask(message: Message):
     # Check subscription for AI chat feature
     can_use, plan, reason = await notes_service.can_use_feature(user.id, "chat")
     if not can_use:
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
         if reason == "free_plan":
             await message.answer(
-                "🔒 **AI-чат недоступен**\n\n"
-                "На бесплатном плане AI-поиск по заметкам не поддерживается.\n\n"
-                "Оформите подписку Pro или Ultra, чтобы задавать вопросы по своим заметкам.",
+                "рџ”’ **AI-С‡Р°С‚ РЅРµРґРѕСЃС‚СѓРїРµРЅ**\n\n"
+                "РќР° Р±РµСЃРїР»Р°С‚РЅРѕРј РїР»Р°РЅРµ AI-РїРѕРёСЃРє РїРѕ Р·Р°РјРµС‚РєР°Рј РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ.\n\n"
+                "РћС„РѕСЂРјРёС‚Рµ РїРѕРґРїРёСЃРєСѓ Pro РёР»Рё Ultra, С‡С‚РѕР±С‹ Р·Р°РґР°РІР°С‚СЊ РІРѕРїСЂРѕСЃС‹ РїРѕ СЃРІРѕРёРј Р·Р°РјРµС‚РєР°Рј.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=get_notes_inline_keyboard()
             )
             return
         elif reason == "not_available":
             await message.answer(
-                "🔒 **AI-чат недоступен**\n\n"
-                f"На плане {plan.title()} AI-чат не поддерживается.\n\n"
-                "Обновите подписку для доступа к этой функции.",
+                "рџ”’ **AI-С‡Р°С‚ РЅРµРґРѕСЃС‚СѓРїРµРЅ**\n\n"
+                f"РќР° РїР»Р°РЅРµ {plan.title()} AI-С‡Р°С‚ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ.\n\n"
+                "РћР±РЅРѕРІРёС‚Рµ РїРѕРґРїРёСЃРєСѓ РґР»СЏ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕР№ С„СѓРЅРєС†РёРё.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=get_notes_inline_keyboard()
             )
             return
-    
-    # Send status message (will be edited)
-    status_msg = await message.answer("🔍 Ищу в твоих заметках...")
+ 
+    await status_msg.edit_text("🔍 Ищу в твоих заметках...")
     
     # Search for relevant notes
     try:
@@ -315,16 +350,16 @@ async def cmd_ask(message: Message):
             timeout=25.0,
         )
     except asyncio.TimeoutError:
-        await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
+        await status_msg.edit_text("РЎР»РёС€РєРѕРј РґРѕР»РіРёР№ РїРѕРёСЃРє РїРѕ Р·Р°РјРµС‚РєР°Рј. РџРѕРїСЂРѕР±СѓР№ РїРѕРІС‚РѕСЂРёС‚СЊ Р·Р°РїСЂРѕСЃ.")
         return
     except Exception as e:
         logger.error(f"RAG search failed: {e}")
-        await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
+        await status_msg.edit_text("РћС€РёР±РєР° РїРѕРёСЃРєР° РїРѕ Р·Р°РјРµС‚РєР°Рј. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         return
     
     if not results:
         await status_msg.edit_text(
-            "😕 Не нашёл релевантных заметок. Попробуй переформулировать вопрос или добавь больше заметок."
+            "рџ• РќРµ РЅР°С€С‘Р» СЂРµР»РµРІР°РЅС‚РЅС‹С… Р·Р°РјРµС‚РѕРє. РџРѕРїСЂРѕР±СѓР№ РїРµСЂРµС„РѕСЂРјСѓР»РёСЂРѕРІР°С‚СЊ РІРѕРїСЂРѕСЃ РёР»Рё РґРѕР±Р°РІСЊ Р±РѕР»СЊС€Рµ Р·Р°РјРµС‚РѕРє."
         )
         return
     
@@ -339,24 +374,24 @@ async def cmd_ask(message: Message):
     ]
     
     # Generate AI response
-    await status_msg.edit_text("Формирую ответ...")
+    await status_msg.edit_text("Р¤РѕСЂРјРёСЂСѓСЋ РѕС‚РІРµС‚...")
     try:
         answer = await asyncio.wait_for(
             summarizer_service.ask(question, context),
             timeout=45.0,
         )
     except asyncio.TimeoutError:
-        await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
+        await status_msg.edit_text("Р“РµРЅРµСЂР°С†РёСЏ РѕС‚РІРµС‚Р° Р·Р°РЅСЏР»Р° СЃР»РёС€РєРѕРј РјРЅРѕРіРѕ РІСЂРµРјРµРЅРё. РџРѕРїСЂРѕР±СѓР№ РµС‰Рµ СЂР°Р·.")
         return
     except Exception as e:
         logger.error(f"RAG answer generation failed: {e}")
-        await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
+        await status_msg.edit_text("РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РѕС‚РІРµС‚Р°. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         return
     
     # Track chat usage
     await notes_service.increment_usage(user.id, "chat_messages", 1)
     
-    await status_msg.edit_text(f"💡 Ответ:\n\n{answer}")
+    await status_msg.edit_text(format_ai_answer_html(answer), parse_mode=ParseMode.HTML)
 
 
 @router.message(Command("status"))
@@ -365,18 +400,18 @@ async def cmd_status(message: Message):
     if not check_user_allowed(message.from_user.id):
         return
     
-    status_msg = await message.answer("🔄 Проверяю сервисы...")
+    status_msg = await message.answer("рџ”„ РџСЂРѕРІРµСЂСЏСЋ СЃРµСЂРІРёСЃС‹...")
     
     whisper_ok = await transcription_service.health_check()
     deepseek_ok = await summarizer_service.health_check()
     embeddings_ok, qdrant_ok = await rag_service.health_details()
     
-    status_text = f"""📡 **Статус сервисов:**
+    status_text = f"""рџ“Ў **РЎС‚Р°С‚СѓСЃ СЃРµСЂРІРёСЃРѕРІ:**
 
-🎙 Whisper (транскрипция): {"✅" if whisper_ok else "❌"}
-🤖 DeepSeek (саммари): {"✅" if deepseek_ok else "❌"}
-🔍 TEI (embeddings): {"✅" if embeddings_ok else "❌"}
-🗄 Qdrant (vector DB): {"✅" if qdrant_ok else "❌"}"""
+рџЋ™ Whisper (С‚СЂР°РЅСЃРєСЂРёРїС†РёСЏ): {"вњ…" if whisper_ok else "вќЊ"}
+рџ¤– DeepSeek (СЃР°РјРјР°СЂРё): {"вњ…" if deepseek_ok else "вќЊ"}
+рџ”Ќ TEI (embeddings): {"вњ…" if embeddings_ok else "вќЊ"}
+рџ—„ Qdrant (vector DB): {"вњ…" if qdrant_ok else "вќЊ"}"""
     
     await status_msg.edit_text(status_text, parse_mode=ParseMode.MARKDOWN)
 
@@ -408,14 +443,14 @@ async def handle_inline_query(inline_query: InlineQuery):
         first_line = first_line[:60] + "..."
     
     # Prepare title for inline picker
-    title = f"📝 {first_line}"
-    description = "Нажми, чтобы отправить заметку"
+    title = f"рџ“ќ {first_line}"
+    description = "РќР°Р¶РјРё, С‡С‚РѕР±С‹ РѕС‚РїСЂР°РІРёС‚СЊ Р·Р°РјРµС‚РєСѓ"
     
     # Message text - only first line preview
     if note.source == "voice":
-        message_text = f"🎤 <b>{first_line}</b>..."
+        message_text = f"рџЋ¤ <b>{first_line}</b>..."
     else:
-        message_text = f"📝 <b>{first_line}</b>..."
+        message_text = f"рџ“ќ <b>{first_line}</b>..."
     
     # Create inline result with button to open note
     results = [
@@ -429,7 +464,7 @@ async def handle_inline_query(inline_query: InlineQuery):
             ),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
-                    text="📖 Открыть заметку",
+                    text="рџ“– РћС‚РєСЂС‹С‚СЊ Р·Р°РјРµС‚РєСѓ",
                     url=f"https://t.me/fixnote_bot?startapp={share_token}"
                 )]
             ])
@@ -457,29 +492,29 @@ async def handle_voice(message: Message):
     if not can_use:
         if reason == "free_plan":
             await message.answer(
-                "🔒 **Голосовые заметки недоступны**\n\n"
-                "На бесплатном плане голосовые заметки не поддерживаются.\n\n"
-                "Оформите подписку Pro или Ultra, чтобы:\n"
-                "• Записывать голосовые заметки\n"
-                "• Получать AI-саммари\n"
-                "• Использовать AI-чат\n\n"
-                "Откройте приложение для оформления подписки 👇",
+                "рџ”’ **Р“РѕР»РѕСЃРѕРІС‹Рµ Р·Р°РјРµС‚РєРё РЅРµРґРѕСЃС‚СѓРїРЅС‹**\n\n"
+                "РќР° Р±РµСЃРїР»Р°С‚РЅРѕРј РїР»Р°РЅРµ РіРѕР»РѕСЃРѕРІС‹Рµ Р·Р°РјРµС‚РєРё РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‚СЃСЏ.\n\n"
+                "РћС„РѕСЂРјРёС‚Рµ РїРѕРґРїРёСЃРєСѓ Pro РёР»Рё Ultra, С‡С‚РѕР±С‹:\n"
+                "вЂў Р—Р°РїРёСЃС‹РІР°С‚СЊ РіРѕР»РѕСЃРѕРІС‹Рµ Р·Р°РјРµС‚РєРё\n"
+                "вЂў РџРѕР»СѓС‡Р°С‚СЊ AI-СЃР°РјРјР°СЂРё\n"
+                "вЂў РСЃРїРѕР»СЊР·РѕРІР°С‚СЊ AI-С‡Р°С‚\n\n"
+                "РћС‚РєСЂРѕР№С‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ РґР»СЏ РѕС„РѕСЂРјР»РµРЅРёСЏ РїРѕРґРїРёСЃРєРё рџ‘‡",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=get_notes_inline_keyboard()
             )
             return
         elif reason == "limit_reached":
             await message.answer(
-                "⚠️ **Лимит голосовых заметок исчерпан**\n\n"
-                f"Вы достигли лимита голосовых заметок на плане {plan.title()}.\n\n"
-                "Обновите подписку до Ultra для увеличения лимита или дождитесь следующего месяца.",
+                "вљ пёЏ **Р›РёРјРёС‚ РіРѕР»РѕСЃРѕРІС‹С… Р·Р°РјРµС‚РѕРє РёСЃС‡РµСЂРїР°РЅ**\n\n"
+                f"Р’С‹ РґРѕСЃС‚РёРіР»Рё Р»РёРјРёС‚Р° РіРѕР»РѕСЃРѕРІС‹С… Р·Р°РјРµС‚РѕРє РЅР° РїР»Р°РЅРµ {plan.title()}.\n\n"
+                "РћР±РЅРѕРІРёС‚Рµ РїРѕРґРїРёСЃРєСѓ РґРѕ Ultra РґР»СЏ СѓРІРµР»РёС‡РµРЅРёСЏ Р»РёРјРёС‚Р° РёР»Рё РґРѕР¶РґРёС‚РµСЃСЊ СЃР»РµРґСѓСЋС‰РµРіРѕ РјРµСЃСЏС†Р°.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=get_notes_inline_keyboard()
             )
             return
     
     # Send initial status message (will be edited)
-    status_msg = await message.answer("🎧 Обрабатываю голосовое сообщение...")
+    status_msg = await message.answer("рџЋ§ РћР±СЂР°Р±Р°С‚С‹РІР°СЋ РіРѕР»РѕСЃРѕРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ...")
     
     try:
         # Download voice file
@@ -497,7 +532,7 @@ async def handle_voice(message: Message):
         )
         
         if not transcription:
-            await status_msg.edit_text("❌ Не удалось транскрибировать аудио. Попробуй ещё раз.")
+            await status_msg.edit_text("вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ С‚СЂР°РЅСЃРєСЂРёР±РёСЂРѕРІР°С‚СЊ Р°СѓРґРёРѕ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р·.")
             return
         
         # Track voice usage (in seconds)
@@ -508,7 +543,7 @@ async def handle_voice(message: Message):
         
         title, summary = None, None
         if can_summarize:
-            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            await status_msg.edit_text("вњЁ РЎРѕР·РґР°СЋ Р·Р°РіРѕР»РѕРІРѕРє Рё СЃР°РјРјР°СЂРё...")
             title, summary = await summarizer_service.summarize_with_title(transcription, user.language_code)
             if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
@@ -531,13 +566,13 @@ async def handle_voice(message: Message):
         await rag_service.index_note(str(note.id), str(user.id), transcription)
         
         # Final response - edit the same message
-        response = "✅ **Заметка сохранена!**"
+        response = "вњ… **Р—Р°РјРµС‚РєР° СЃРѕС…СЂР°РЅРµРЅР°!**"
         if title:
-            response += f"\n\n📌 **{title}**"
+            response += f"\n\nрџ“Њ **{title}**"
         if summary:
-            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+            response += f"\n\nрџ’Ў **РЎР°РјРјР°СЂРё:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
         elif not can_summarize:
-            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+            response += "\n\n_рџ’Ў AI-СЃР°РјРјР°СЂРё РЅРµРґРѕСЃС‚СѓРїРЅРѕ РЅР° РІР°С€РµРј РїР»Р°РЅРµ_"
         
         keyboard = get_note_open_keyboard(str(note.id))
         await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
@@ -545,9 +580,9 @@ async def handle_voice(message: Message):
     except Exception as e:
         logger.error(f"Voice processing error: {e}")
         try:
-            await status_msg.edit_text("❌ Произошла ошибка при обработке. Попробуй позже.")
+            await status_msg.edit_text("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё РѕР±СЂР°Р±РѕС‚РєРµ. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         except:
-            await message.answer("❌ Произошла ошибка при обработке. Попробуй позже.")
+            await message.answer("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё РѕР±СЂР°Р±РѕС‚РєРµ. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
 
 
 async def process_forwarded_messages(user_id: int, chat_id: int):
@@ -591,11 +626,11 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
     if not combined_texts and not image_urls:
         return
     
-    combined_text = "\n\n".join(combined_texts) if combined_texts else "📷 Изображения без текста"
+    combined_text = "\n\n".join(combined_texts) if combined_texts else "рџ“· РР·РѕР±СЂР°Р¶РµРЅРёСЏ Р±РµР· С‚РµРєСЃС‚Р°"
     source = "photo" if image_urls else "text"
 
     # Send initial status message
-    status_msg = await bot.send_message(chat_id, "📝 Сохраняю пересланные сообщения...")
+    status_msg = await bot.send_message(chat_id, "рџ“ќ РЎРѕС…СЂР°РЅСЏСЋ РїРµСЂРµСЃР»Р°РЅРЅС‹Рµ СЃРѕРѕР±С‰РµРЅРёСЏ...")
     
     try:
         # Extract URLs from all messages and add to content
@@ -609,7 +644,7 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
         title, summary = None, None
         can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
         if can_summarize and len(combined_text.strip()) >= 10:
-            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            await status_msg.edit_text("вњЁ РЎРѕР·РґР°СЋ Р·Р°РіРѕР»РѕРІРѕРє Рё СЃР°РјРјР°СЂРё...")
             title, summary = await summarizer_service.summarize_with_title(combined_text, user.language_code)
             if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
@@ -632,14 +667,14 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
         
         # Final response with button
         msg_count = len(messages)
-        photo_text = f" с {len(image_urls)} фото" if image_urls else ""
-        response = f"✅ **{msg_count} сообщений{photo_text} сохранено как 1 заметка!**"
+        photo_text = f" СЃ {len(image_urls)} С„РѕС‚Рѕ" if image_urls else ""
+        response = f"вњ… **{msg_count} СЃРѕРѕР±С‰РµРЅРёР№{photo_text} СЃРѕС…СЂР°РЅРµРЅРѕ РєР°Рє 1 Р·Р°РјРµС‚РєР°!**"
         if title:
-            response += f"\n\n📌 **{title}**"
+            response += f"\n\nрџ“Њ **{title}**"
         if summary:
-            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+            response += f"\n\nрџ’Ў **РЎР°РјРјР°СЂРё:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
         elif not can_summarize:
-            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+            response += "\n\n_рџ’Ў AI-СЃР°РјРјР°СЂРё РЅРµРґРѕСЃС‚СѓРїРЅРѕ РЅР° РІР°С€РµРј РїР»Р°РЅРµ_"
         
         keyboard = get_note_open_keyboard(str(note.id))
         await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
@@ -647,9 +682,9 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
     except Exception as e:
         logger.error(f"Forwarded messages processing error: {e}")
         try:
-            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await status_msg.edit_text("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         except:
-            await bot.send_message(chat_id, "❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await bot.send_message(chat_id, "вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
 
 
 async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
@@ -689,10 +724,10 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
         return
     
     # Combine captions or use default text
-    content = "\n\n".join(captions) if captions else f"📷 {len(image_urls)} изображений"
+    content = "\n\n".join(captions) if captions else f"рџ“· {len(image_urls)} РёР·РѕР±СЂР°Р¶РµРЅРёР№"
 
     # Send initial status message
-    status_msg = await bot.send_message(chat_id, "📷 Обрабатываю изображения...")
+    status_msg = await bot.send_message(chat_id, "рџ“· РћР±СЂР°Р±Р°С‚С‹РІР°СЋ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ...")
     
     try:
         # Extract URLs from all messages and add to content
@@ -706,7 +741,7 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
         title, summary = None, None
         can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
         if can_summarize and len(content.strip()) >= 10:
-            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            await status_msg.edit_text("вњЁ РЎРѕР·РґР°СЋ Р·Р°РіРѕР»РѕРІРѕРє Рё СЃР°РјРјР°СЂРё...")
             title, summary = await summarizer_service.summarize_with_title(content, user.language_code)
             if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
@@ -728,13 +763,13 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
         await rag_service.index_note(str(note.id), str(user.id), content)
         
         # Final response with button
-        response = f"✅ **Сохранено {len(image_urls)} фото как заметка!**"
+        response = f"вњ… **РЎРѕС…СЂР°РЅРµРЅРѕ {len(image_urls)} С„РѕС‚Рѕ РєР°Рє Р·Р°РјРµС‚РєР°!**"
         if title:
-            response += f"\n\n📌 **{title}**"
+            response += f"\n\nрџ“Њ **{title}**"
         if summary:
-            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+            response += f"\n\nрџ’Ў **РЎР°РјРјР°СЂРё:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
         elif not can_summarize:
-            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+            response += "\n\n_рџ’Ў AI-СЃР°РјРјР°СЂРё РЅРµРґРѕСЃС‚СѓРїРЅРѕ РЅР° РІР°С€РµРј РїР»Р°РЅРµ_"
         
         keyboard = get_note_open_keyboard(str(note.id))
         await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
@@ -742,9 +777,9 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
     except Exception as e:
         logger.error(f"Media group processing error: {e}")
         try:
-            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await status_msg.edit_text("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         except:
-            await bot.send_message(chat_id, "❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await bot.send_message(chat_id, "вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
 
 
 @router.message(F.text)
@@ -786,7 +821,7 @@ async def handle_text(message: Message):
     # Check if it's a question (for RAG)
     is_question = (
         text.endswith("?") or 
-        text.lower().startswith(("что ", "как ", "где ", "когда ", "почему ", "кто ", "какой ", "сколько "))
+        text.lower().startswith(("С‡С‚Рѕ ", "РєР°Рє ", "РіРґРµ ", "РєРѕРіРґР° ", "РїРѕС‡РµРјСѓ ", "РєС‚Рѕ ", "РєР°РєРѕР№ ", "СЃРєРѕР»СЊРєРѕ "))
     )
     
     if is_question and len(text) < 200:
@@ -799,7 +834,7 @@ async def handle_text(message: Message):
             return
         
         # Treat as AI query - edit single message
-        status_msg = await message.answer("🔍 Ищу ответ в заметках...")
+        status_msg = await message.answer("рџ”Ќ РС‰Сѓ РѕС‚РІРµС‚ РІ Р·Р°РјРµС‚РєР°С…...")
         
         try:
             results = await asyncio.wait_for(
@@ -812,11 +847,11 @@ async def handle_text(message: Message):
                 timeout=25.0,
             )
         except asyncio.TimeoutError:
-            await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
+            await status_msg.edit_text("РЎР»РёС€РєРѕРј РґРѕР»РіРёР№ РїРѕРёСЃРє РїРѕ Р·Р°РјРµС‚РєР°Рј. РџРѕРїСЂРѕР±СѓР№ РїРѕРІС‚РѕСЂРёС‚СЊ Р·Р°РїСЂРѕСЃ.")
             return
         except Exception as e:
             logger.error(f"Text RAG search failed: {e}")
-            await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
+            await status_msg.edit_text("РћС€РёР±РєР° РїРѕРёСЃРєР° РїРѕ Р·Р°РјРµС‚РєР°Рј. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
             return
         
         if results:
@@ -828,24 +863,24 @@ async def handle_text(message: Message):
                 }
                 for r in results
             ]
-            await status_msg.edit_text("Формирую ответ...")
+            await status_msg.edit_text("Р¤РѕСЂРјРёСЂСѓСЋ РѕС‚РІРµС‚...")
             try:
                 answer = await asyncio.wait_for(
                     summarizer_service.ask(text, context),
                     timeout=45.0,
                 )
             except asyncio.TimeoutError:
-                await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
+                await status_msg.edit_text("Р“РµРЅРµСЂР°С†РёСЏ РѕС‚РІРµС‚Р° Р·Р°РЅСЏР»Р° СЃР»РёС€РєРѕРј РјРЅРѕРіРѕ РІСЂРµРјРµРЅРё. РџРѕРїСЂРѕР±СѓР№ РµС‰Рµ СЂР°Р·.")
                 return
             except Exception as e:
                 logger.error(f"Text RAG answer generation failed: {e}")
-                await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
+                await status_msg.edit_text("РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РѕС‚РІРµС‚Р°. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
                 return
             
             # Track chat usage
             await notes_service.increment_usage(user.id, "chat_messages", 1)
             
-            await status_msg.edit_text(f"💡 Ответ:\n\n{answer}")
+            await status_msg.edit_text(format_ai_answer_html(answer), parse_mode=ParseMode.HTML)
         else:
             # No results - save as note instead
             await status_msg.delete()
@@ -858,7 +893,7 @@ async def handle_text(message: Message):
 async def save_text_note(message: Message, user, text: str):
     """Save text as a note. Generate title (and summary) via DeepSeek when allowed."""
     # Send initial status message
-    status_msg = await message.answer("📝 Сохраняю заметку...")
+    status_msg = await message.answer("рџ“ќ РЎРѕС…СЂР°РЅСЏСЋ Р·Р°РјРµС‚РєСѓ...")
     
     try:
         # Extract URLs from message entities and add to content
@@ -869,7 +904,7 @@ async def save_text_note(message: Message, user, text: str):
         title, summary = None, None
         can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
         if can_summarize and len(text.strip()) >= 10:
-            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            await status_msg.edit_text("вњЁ РЎРѕР·РґР°СЋ Р·Р°РіРѕР»РѕРІРѕРє Рё СЃР°РјРјР°СЂРё...")
             title, summary = await summarizer_service.summarize_with_title(text, user.language_code)
             if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
@@ -889,13 +924,13 @@ async def save_text_note(message: Message, user, text: str):
         await rag_service.index_note(str(note.id), str(user.id), text)
 
         # Final response with button to open note
-        response = "✅ **Заметка сохранена!**"
+        response = "вњ… **Р—Р°РјРµС‚РєР° СЃРѕС…СЂР°РЅРµРЅР°!**"
         if title:
-            response += f"\n\n📌 **{title}**"
+            response += f"\n\nрџ“Њ **{title}**"
         if summary:
-            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+            response += f"\n\nрџ’Ў **РЎР°РјРјР°СЂРё:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
         elif not can_summarize:
-            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+            response += "\n\n_рџ’Ў AI-СЃР°РјРјР°СЂРё РЅРµРґРѕСЃС‚СѓРїРЅРѕ РЅР° РІР°С€РµРј РїР»Р°РЅРµ_"
         
         keyboard = get_note_open_keyboard(str(note.id))
         await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
@@ -903,9 +938,9 @@ async def save_text_note(message: Message, user, text: str):
     except Exception as e:
         logger.error(f"Text note save error: {e}")
         try:
-            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await status_msg.edit_text("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         except:
-            await message.answer("❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await message.answer("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
 
 
 @router.message(F.photo)
@@ -966,20 +1001,20 @@ async def handle_photo(message: Message):
     # Get largest photo
     largest = await get_largest_photo(message.photo)
     if not largest:
-        await message.answer("❌ Не удалось обработать изображение")
+        await message.answer("вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±СЂР°Р±РѕС‚Р°С‚СЊ РёР·РѕР±СЂР°Р¶РµРЅРёРµ")
         return
     
     # Get file URL
     url = await get_telegram_file_url(largest.file_id)
     if not url:
-        await message.answer("❌ Не удалось получить URL изображения")
+        await message.answer("вќЊ РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕР»СѓС‡РёС‚СЊ URL РёР·РѕР±СЂР°Р¶РµРЅРёСЏ")
         return
     
     # Get caption or use default
-    content = message.caption.strip() if message.caption else "📷 Изображение"
+    content = message.caption.strip() if message.caption else "рџ“· РР·РѕР±СЂР°Р¶РµРЅРёРµ"
     
     # Send initial status message
-    status_msg = await message.answer("📷 Обрабатываю изображение...")
+    status_msg = await message.answer("рџ“· РћР±СЂР°Р±Р°С‚С‹РІР°СЋ РёР·РѕР±СЂР°Р¶РµРЅРёРµ...")
     
     try:
         # Extract URLs from message entities and add to content
@@ -991,7 +1026,7 @@ async def handle_photo(message: Message):
         title, summary = None, None
         can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
         if can_summarize and len(content.strip()) >= 10:
-            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            await status_msg.edit_text("вњЁ РЎРѕР·РґР°СЋ Р·Р°РіРѕР»РѕРІРѕРє Рё СЃР°РјРјР°СЂРё...")
             title, summary = await summarizer_service.summarize_with_title(content, user.language_code)
             if title or summary:
                 await notes_service.increment_usage(user.id, "summaries", 1)
@@ -1013,13 +1048,13 @@ async def handle_photo(message: Message):
         await rag_service.index_note(str(note.id), str(user.id), content)
         
         # Final response with button
-        response = "✅ **Заметка сохранена!**"
+        response = "вњ… **Р—Р°РјРµС‚РєР° СЃРѕС…СЂР°РЅРµРЅР°!**"
         if title:
-            response += f"\n\n📌 **{title}**"
+            response += f"\n\nрџ“Њ **{title}**"
         if summary:
-            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+            response += f"\n\nрџ’Ў **РЎР°РјРјР°СЂРё:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
         elif not can_summarize:
-            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+            response += "\n\n_рџ’Ў AI-СЃР°РјРјР°СЂРё РЅРµРґРѕСЃС‚СѓРїРЅРѕ РЅР° РІР°С€РµРј РїР»Р°РЅРµ_"
         
         keyboard = get_note_open_keyboard(str(note.id))
         await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
@@ -1027,9 +1062,9 @@ async def handle_photo(message: Message):
     except Exception as e:
         logger.error(f"Photo processing error: {e}")
         try:
-            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await status_msg.edit_text("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
         except:
-            await message.answer("❌ Произошла ошибка при сохранении. Попробуй позже.")
+            await message.answer("вќЊ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё. РџРѕРїСЂРѕР±СѓР№ РїРѕР·Р¶Рµ.")
 
 
 # Payment handlers for Telegram Stars
@@ -1110,24 +1145,24 @@ async def process_successful_payment(message: Message):
         if success:
             # Get plan name for message
             plan_names = {
-                "pro": "Pro ⭐️",
-                "ultra": "Ultra 💎"
+                "pro": "Pro в­ђпёЏ",
+                "ultra": "Ultra рџ’Ћ"
             }
             plan_name = plan_names.get(plan, plan.title())
             
             if billing_period == "yearly":
-                payment_kind = "Годовая подписка оплачена и активирована."
+                payment_kind = "Р“РѕРґРѕРІР°СЏ РїРѕРґРїРёСЃРєР° РѕРїР»Р°С‡РµРЅР° Рё Р°РєС‚РёРІРёСЂРѕРІР°РЅР°."
             elif is_recurring and not is_first_recurring:
-                payment_kind = "Платеж продлил вашу подписку на следующий период."
+                payment_kind = "РџР»Р°С‚РµР¶ РїСЂРѕРґР»РёР» РІР°С€Сѓ РїРѕРґРїРёСЃРєСѓ РЅР° СЃР»РµРґСѓСЋС‰РёР№ РїРµСЂРёРѕРґ."
             elif is_first_recurring:
-                payment_kind = "Ежемесячная подписка успешно активирована."
+                payment_kind = "Р•Р¶РµРјРµСЃСЏС‡РЅР°СЏ РїРѕРґРїРёСЃРєР° СѓСЃРїРµС€РЅРѕ Р°РєС‚РёРІРёСЂРѕРІР°РЅР°."
             else:
-                payment_kind = "Платеж успешно получен."
+                payment_kind = "РџР»Р°С‚РµР¶ СѓСЃРїРµС€РЅРѕ РїРѕР»СѓС‡РµРЅ."
 
             await message.answer(
-                f"🎉 **Подписка {plan_name} активирована!**\n\n"
+                f"рџЋ‰ **РџРѕРґРїРёСЃРєР° {plan_name} Р°РєС‚РёРІРёСЂРѕРІР°РЅР°!**\n\n"
                 f"{payment_kind}\n"
-                f"Спасибо за поддержку! ❤️",
+                f"РЎРїР°СЃРёР±Рѕ Р·Р° РїРѕРґРґРµСЂР¶РєСѓ! вќ¤пёЏ",
                 parse_mode=ParseMode.MARKDOWN
             )
 
@@ -1141,16 +1176,16 @@ async def process_successful_payment(message: Message):
             )
         else:
             await message.answer(
-                "⚠️ Платёж получен, но возникла ошибка при активации подписки. "
-                "Пожалуйста, свяжитесь с поддержкой."
+                "вљ пёЏ РџР»Р°С‚С‘Р¶ РїРѕР»СѓС‡РµРЅ, РЅРѕ РІРѕР·РЅРёРєР»Р° РѕС€РёР±РєР° РїСЂРё Р°РєС‚РёРІР°С†РёРё РїРѕРґРїРёСЃРєРё. "
+                "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, СЃРІСЏР¶РёС‚РµСЃСЊ СЃ РїРѕРґРґРµСЂР¶РєРѕР№."
             )
             logger.error(f"Failed to activate subscription: user={user_uuid}, plan={plan}")
             
     except Exception as e:
         logger.error(f"Payment processing error: {e}")
         await message.answer(
-            "⚠️ Произошла ошибка при обработке платежа. "
-            "Пожалуйста, свяжитесь с поддержкой."
+            "вљ пёЏ РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё РѕР±СЂР°Р±РѕС‚РєРµ РїР»Р°С‚РµР¶Р°. "
+            "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, СЃРІСЏР¶РёС‚РµСЃСЊ СЃ РїРѕРґРґРµСЂР¶РєРѕР№."
         )
 
 
@@ -1168,3 +1203,6 @@ async def stop_bot():
     """Stop the bot."""
     logger.info("Stopping bot...")
     await bot.session.close()
+
+
+
