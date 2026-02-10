@@ -304,12 +304,23 @@ async def cmd_ask(message: Message):
     status_msg = await message.answer("🔍 Ищу в твоих заметках...")
     
     # Search for relevant notes
-    results = await rag_service.search_with_threshold(
-        query=question,
-        user_id=str(user.id),
-        limit=5,
-        min_similarity=0.2
-    )
+    try:
+        results = await asyncio.wait_for(
+            rag_service.search_with_threshold(
+                query=question,
+                user_id=str(user.id),
+                limit=5,
+                min_similarity=0.2
+            ),
+            timeout=25.0,
+        )
+    except asyncio.TimeoutError:
+        await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
+        return
+    except Exception as e:
+        logger.error(f"RAG search failed: {e}")
+        await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
+        return
     
     if not results:
         await status_msg.edit_text(
@@ -328,12 +339,24 @@ async def cmd_ask(message: Message):
     ]
     
     # Generate AI response
-    answer = await summarizer_service.ask(question, context)
+    await status_msg.edit_text("Формирую ответ...")
+    try:
+        answer = await asyncio.wait_for(
+            summarizer_service.ask(question, context),
+            timeout=45.0,
+        )
+    except asyncio.TimeoutError:
+        await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
+        return
+    except Exception as e:
+        logger.error(f"RAG answer generation failed: {e}")
+        await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
+        return
     
     # Track chat usage
     await notes_service.increment_usage(user.id, "chat_messages", 1)
     
-    await status_msg.edit_text(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
+    await status_msg.edit_text(f"💡 Ответ:\n\n{answer}")
 
 
 @router.message(Command("status"))
@@ -778,12 +801,23 @@ async def handle_text(message: Message):
         # Treat as AI query - edit single message
         status_msg = await message.answer("🔍 Ищу ответ в заметках...")
         
-        results = await rag_service.search_with_threshold(
-            query=text,
-            user_id=str(user.id),
-            limit=5,
-            min_similarity=0.2
-        )
+        try:
+            results = await asyncio.wait_for(
+                rag_service.search_with_threshold(
+                    query=text,
+                    user_id=str(user.id),
+                    limit=5,
+                    min_similarity=0.2
+                ),
+                timeout=25.0,
+            )
+        except asyncio.TimeoutError:
+            await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
+            return
+        except Exception as e:
+            logger.error(f"Text RAG search failed: {e}")
+            await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
+            return
         
         if results:
             context = [
@@ -794,12 +828,24 @@ async def handle_text(message: Message):
                 }
                 for r in results
             ]
-            answer = await summarizer_service.ask(text, context)
+            await status_msg.edit_text("Формирую ответ...")
+            try:
+                answer = await asyncio.wait_for(
+                    summarizer_service.ask(text, context),
+                    timeout=45.0,
+                )
+            except asyncio.TimeoutError:
+                await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
+                return
+            except Exception as e:
+                logger.error(f"Text RAG answer generation failed: {e}")
+                await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
+                return
             
             # Track chat usage
             await notes_service.increment_usage(user.id, "chat_messages", 1)
             
-            await status_msg.edit_text(f"💡 **Ответ:**\n\n{answer}", parse_mode=ParseMode.MARKDOWN)
+            await status_msg.edit_text(f"💡 Ответ:\n\n{answer}")
         else:
             # No results - save as note instead
             await status_msg.delete()

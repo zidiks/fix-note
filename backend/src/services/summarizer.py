@@ -70,7 +70,8 @@ class SummarizerService:
     def __init__(self):
         self.client = AsyncOpenAI(
             api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_api_url
+            base_url=settings.deepseek_api_url,
+            timeout=45.0,
         )
         self.model = "deepseek-chat"
     
@@ -220,5 +221,4 @@ class SummarizerService:
             return True
         except Exception:
             return False
-
 
