@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
+import asyncio
 import httpx
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qmodels
@@ -91,18 +92,29 @@ class RAGService:
 
     async def _embed_texts(self, texts: List[str]) -> List[List[float]]:
         payload = {"inputs": texts if len(texts) > 1 else texts[0]}
-        try:
-            response = await self.http.post(self._embed_url, json=payload)
-            if response.status_code == 404:
-                # OpenAI-compatible fallback
-                response = await self.http.post(
-                    self._embed_fallback_url,
-                    json={"input": texts, "model": self.embedding_model},
-                )
-            response.raise_for_status()
-        except Exception as e:
-            logger.error(f"Embedding request failed: {e}")
-            raise
+        max_attempts = 6
+        backoff_sec = 1.5
+        response = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await self.http.post(self._embed_url, json=payload)
+                if response.status_code == 404:
+                    # OpenAI-compatible fallback
+                    response = await self.http.post(
+                        self._embed_fallback_url,
+                        json={"input": texts, "model": self.embedding_model},
+                    )
+                response.raise_for_status()
+                break
+            except Exception as e:
+                if attempt == max_attempts:
+                    logger.error(f"Embedding request failed: {e}")
+                    raise
+                await asyncio.sleep(backoff_sec)
+
+        if response is None:
+            raise RuntimeError("Failed to fetch embeddings")
 
         data = response.json()
         embeddings = self._parse_embeddings_response(data)

@@ -10,6 +10,7 @@ import argparse
 import base64
 import logging
 import os
+import time
 from typing import Dict, List, Optional
 
 import httpx
@@ -87,14 +88,31 @@ def _parse_embeddings_response(data) -> List[List[float]]:
 def _embed_texts(client: httpx.Client, base_url: str, model: str, texts: List[str]) -> List[List[float]]:
     url = base_url.rstrip("/")
     payload = {"inputs": texts if len(texts) > 1 else texts[0]}
-    response = client.post(f"{url}/embed", json=payload)
-    if response.status_code == 404:
-        response = client.post(
-            f"{url}/embeddings",
-            json={"input": texts, "model": model},
-        )
-    response.raise_for_status()
-    return _parse_embeddings_response(response.json())
+    max_attempts = 20
+    backoff_sec = 3
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.post(f"{url}/embed", json=payload)
+            if response.status_code == 404:
+                response = client.post(
+                    f"{url}/embeddings",
+                    json={"input": texts, "model": model},
+                )
+            response.raise_for_status()
+            return _parse_embeddings_response(response.json())
+        except Exception:
+            if attempt == max_attempts:
+                raise
+            logger.info(
+                "Embeddings service not ready yet (attempt %s/%s), retrying in %ss...",
+                attempt,
+                max_attempts,
+                backoff_sec,
+            )
+            time.sleep(backoff_sec)
+
+    raise RuntimeError("Failed to get embeddings after retries")
 
 
 def _ensure_collection(client: QdrantClient, collection: str, dim: int) -> None:
