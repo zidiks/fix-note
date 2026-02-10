@@ -2,13 +2,15 @@
 import asyncio
 import html
 import re
+import secrets
 from collections import defaultdict
 from typing import List, Optional
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
-    Message, 
+    Message,
+    CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     WebAppInfo,
@@ -53,11 +55,26 @@ forwarded_messages_tasks: dict[int, asyncio.Task] = {}
 media_group_buffer: dict[str, list[Message]] = defaultdict(list)
 media_group_tasks: dict[str, asyncio.Task] = {}
 
+# Pending intent confirmations for ambiguous messages.
+pending_intent_buffer: dict[str, dict] = {}
+PENDING_INTENT_TTL_SEC = 15 * 60
+
+QUESTION_PREFIXES = (
+    "что ", "как ", "где ", "когда ", "почему ", "зачем ", "кто ", "какой ",
+    "какая ", "какие ", "сколько ", "чей ", "чья ", "чьи ",
+    "расскажи ", "напомни ", "подскажи ", "объясни ", "покажи ",
+)
+
+NOTE_PREFIXES = (
+    "заметка:", "заметка ", "запомни ", "сохрани ", "конспект ", "итоги ",
+    "план ", "todo ", "todo:", "идея ", "мысли ",
+)
+
 
 def format_ai_answer_html(answer: str) -> str:
     """Render model output to Telegram-safe HTML with light formatting."""
     if not answer:
-        return "<b>Answer:</b>\n\nCould not generate an answer."
+        return "<b>Ответ:</b>\n\nНе удалось сгенерировать ответ."
 
     escaped = html.escape(answer.strip())
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
@@ -74,7 +91,7 @@ def format_ai_answer_html(answer: str) -> str:
     if len(body) > 3600:
         body = body[:3597] + "..."
 
-    return f"<b>Answer:</b>\n\n{body}"
+    return f"<b>💡 Ответ:</b>\n\n{body}"
 
 
 async def get_telegram_file_url(file_id: str) -> Optional[str]:
@@ -152,6 +169,272 @@ def check_user_allowed(user_id: int) -> bool:
     return user_id in allowed_ids
 
 
+def _cleanup_pending_intents() -> None:
+    now = datetime.utcnow().timestamp()
+    expired = [
+        token
+        for token, payload in pending_intent_buffer.items()
+        if now - payload.get("created_at_ts", 0) > PENDING_INTENT_TTL_SEC
+    ]
+    for token in expired:
+        pending_intent_buffer.pop(token, None)
+
+
+def detect_message_intent(text: str) -> str:
+    """
+    Classify user text into ask/note/ambiguous.
+    """
+    normalized = (text or "").strip()
+    if not normalized:
+        return "note"
+
+    lowered = normalized.lower()
+    has_question_mark = "?" in normalized
+    starts_with_question = lowered.startswith(QUESTION_PREFIXES)
+    starts_with_note = lowered.startswith(NOTE_PREFIXES)
+
+    if has_question_mark or starts_with_question:
+        return "ask"
+    if starts_with_note:
+        return "note"
+    if len(normalized) >= 260:
+        return "note"
+    if "\n" in normalized:
+        return "note"
+    if len(normalized) <= 35:
+        return "ambiguous"
+    return "ambiguous"
+
+
+def store_pending_intent(
+    telegram_user_id: int,
+    source: str,
+    text: str,
+    urls: Optional[List[str]] = None,
+    voice_duration: Optional[int] = None,
+    voice_url: Optional[str] = None,
+) -> str:
+    _cleanup_pending_intents()
+    token = secrets.token_hex(8)
+    pending_intent_buffer[token] = {
+        "created_at_ts": datetime.utcnow().timestamp(),
+        "telegram_user_id": telegram_user_id,
+        "source": source,
+        "text": text,
+        "urls": urls or [],
+        "voice_duration": voice_duration,
+        "voice_url": voice_url,
+    }
+    return token
+
+
+def get_intent_choice_keyboard(token: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔍 Ответить по заметкам",
+                    callback_data=f"intent:{token}:ask",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📝 Сохранить как заметку",
+                    callback_data=f"intent:{token}:note",
+                )
+            ],
+        ]
+    )
+
+
+async def run_rag_answer(message: Message, user, question: str, initial_state: str) -> None:
+    """Run RAG pipeline for a question and respond with status updates."""
+    status_msg = await message.answer(initial_state)
+
+    can_use, plan, reason = await notes_service.can_use_feature(user.id, "chat")
+    if not can_use:
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        if reason == "free_plan":
+            await message.answer(
+                "🔒 **AI-чат недоступен**\n\n"
+                "На бесплатном плане AI-поиск по заметкам не поддерживается.\n\n"
+                "Оформите подписку Pro или Ultra, чтобы задавать вопросы по своим заметкам.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_notes_inline_keyboard()
+            )
+            return
+        if reason == "not_available":
+            await message.answer(
+                "🔒 **AI-чат недоступен**\n\n"
+                f"На плане {plan.title()} AI-чат не поддерживается.\n\n"
+                "Обновите подписку для доступа к этой функции.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_notes_inline_keyboard()
+            )
+            return
+
+    await status_msg.edit_text("🔍 Ищу в твоих заметках...")
+
+    try:
+        results = await asyncio.wait_for(
+            rag_service.search_with_threshold(
+                query=question,
+                user_id=str(user.id),
+                limit=5,
+                min_similarity=0.2
+            ),
+            timeout=25.0,
+        )
+    except asyncio.TimeoutError:
+        await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
+        return
+    except Exception as e:
+        logger.error(f"RAG search failed: {e}")
+        await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
+        return
+
+    if not results:
+        await status_msg.edit_text(
+            "😕 Не нашёл релевантных заметок. Попробуй переформулировать вопрос или добавь больше заметок."
+        )
+        return
+
+    context = [
+        {
+            "content": r.content,
+            "summary": r.summary,
+            "similarity": r.similarity
+        }
+        for r in results
+    ]
+
+    await status_msg.edit_text("Формирую ответ...")
+    try:
+        answer = await asyncio.wait_for(
+            summarizer_service.ask(question, context),
+            timeout=45.0,
+        )
+    except asyncio.TimeoutError:
+        await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
+        return
+    except Exception as e:
+        logger.error(f"RAG answer generation failed: {e}")
+        await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
+        return
+
+    await notes_service.increment_usage(user.id, "chat_messages", 1)
+    await status_msg.edit_text(format_ai_answer_html(answer), parse_mode=ParseMode.HTML)
+
+
+async def save_voice_note(
+    message: Message,
+    user,
+    transcription: str,
+    duration_seconds: Optional[int],
+    voice_url: Optional[str],
+) -> None:
+    """Save transcribed voice as note and index for RAG."""
+    status_msg = await message.answer("📝 Сохраняю заметку...")
+
+    try:
+        title, summary = None, None
+        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
+        if can_summarize:
+            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
+            title, summary = await summarizer_service.summarize_with_title(transcription, user.language_code)
+            if title or summary:
+                await notes_service.increment_usage(user.id, "summaries", 1)
+
+        note = await notes_service.create_note(
+            user_id=user.id,
+            note_data=NoteCreate(
+                content=transcription,
+                title=title,
+                summary=summary,
+                source="voice",
+                duration_seconds=duration_seconds,
+                voice_url=voice_url
+            ),
+            user_language=user.language_code
+        )
+
+        await rag_service.index_note(str(note.id), str(user.id), transcription)
+
+        response = "✅ **Заметка сохранена!**"
+        if title:
+            response += f"\n\n📌 **{title}**"
+        if summary:
+            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
+        elif not can_summarize:
+            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
+
+        keyboard = get_note_open_keyboard(str(note.id))
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"Voice note save error: {e}")
+        try:
+            await status_msg.edit_text("❌ Произошла ошибка при сохранении. Попробуй позже.")
+        except Exception:
+            await message.answer("❌ Произошла ошибка при сохранении. Попробуй позже.")
+
+
+async def route_message_by_intent(
+    message: Message,
+    user,
+    text: str,
+    source: str,
+    urls: Optional[List[str]] = None,
+    voice_duration: Optional[int] = None,
+    voice_url: Optional[str] = None,
+) -> None:
+    """Route message to ask flow, note save, or clarification buttons."""
+    intent = detect_message_intent(text)
+
+    if intent == "ask":
+        can_chat, _, _ = await notes_service.can_use_feature(user.id, "chat")
+        if can_chat:
+            await run_rag_answer(message, user, text, initial_state="⏳ Принял вопрос, готовлю поиск...")
+            return
+        # Fall back to note when chat feature is unavailable.
+        if source == "voice":
+            await save_voice_note(message, user, text, voice_duration, voice_url)
+        else:
+            await save_text_note(message, user, text, urls=urls)
+        return
+
+    if intent == "note":
+        if source == "voice":
+            await save_voice_note(message, user, text, voice_duration, voice_url)
+        else:
+            await save_text_note(message, user, text, urls=urls)
+        return
+
+    can_chat, _, _ = await notes_service.can_use_feature(user.id, "chat")
+    if not can_chat:
+        if source == "voice":
+            await save_voice_note(message, user, text, voice_duration, voice_url)
+        else:
+            await save_text_note(message, user, text, urls=urls)
+        return
+
+    token = store_pending_intent(
+        telegram_user_id=message.from_user.id,
+        source=source,
+        text=text,
+        urls=urls,
+        voice_duration=voice_duration,
+        voice_url=voice_url,
+    )
+    await message.answer(
+        "🤔 Не до конца понял намерение. Что сделать с этим сообщением?",
+        reply_markup=get_intent_choice_keyboard(token),
+    )
+
+
 # Command handlers
 @router.message(CommandStart())
 async def cmd_start(message: Message):
@@ -171,11 +454,11 @@ async def cmd_start(message: Message):
 
 Я бот для голосовых и текстовых заметок с AI-возможностями:
 
-🎤 **Голосовые заметки** — отправь голосовое сообщение, я транскрибирую его и создам краткое саммари
+🎤 **Голосовые сообщения** — я расшифрую аудио и сам пойму: это вопрос или заметка
 
-📝 **Текстовые заметки** — просто напиши текст, и я сохраню его как заметку
+📝 **Текстовые сообщения** — пишешь как обычно, я автоматически отвечаю или сохраняю
 
-🔍 **Умный поиск** — используй команду /ask чтобы задать вопрос по своим заметкам
+🔍 **Умный поиск** — вопрос можно задавать сразу, без команды /ask
 
 📋 **Mini App** — открой все заметки в удобном интерфейсе
 
@@ -195,25 +478,24 @@ async def cmd_help(message: Message):
 **Команды:**
 /start — Начать работу
 /help — Эта справка
-/ask <вопрос> — Задать вопрос по заметкам
 /notes — Открыть Mini App с заметками
 /stats — Статистика заметок
 
 **Как использовать:**
 
-🎤 **Голосовые заметки**
-Отправь голосовое сообщение. Бот автоматически:
-1. Транскрибирует аудио в текст
-2. Создаст краткое AI-саммари
-3. Сохранит заметку с возможностью поиска
+🎤 **Голосовые сообщения**
+Отправь голосовое. Я пойму намерение автоматически:
+1. Если это вопрос — отвечу по твоим заметкам
+2. Если это заметка — сохраню её
 
-📝 **Текстовые заметки**
-Просто напиши текст — он сохранится как заметка.
+📝 **Текстовые сообщения**
+Просто напиши текст. Если это вопрос — получишь ответ, если заметка — сохраню её.
 
-🔍 **RAG-поиск**
-Используй /ask чтобы задать вопрос. AI найдёт релевантные заметки и ответит на основе твоих записей.
+🔍 **Поиск по заметкам**
+Я сам определяю, когда нужно ответить по заметкам.
+Если формулировка неоднозначна, спрошу: ответить или сохранить.
 
-_Пример: /ask Что мы обсуждали на прошлой встрече?_"""
+_Пример вопроса: Что мы обсуждали на прошлой встрече?_"""
 
     await message.answer(help_text, parse_mode=ParseMode.MARKDOWN)
 
@@ -262,7 +544,7 @@ async def cmd_stats(message: Message):
         return
     
     # Show immediate state so user gets instant feedback.
-    status_msg = await message.answer("Принял вопрос, готовлю поиск...")
+    status_msg = await message.answer("📊 Собираю статистику...")
 
     user = await notes_service.get_or_create_user(
         telegram_id=message.from_user.id,
@@ -281,12 +563,12 @@ async def cmd_stats(message: Message):
 📅 За эту неделю: **{stats.notes_this_week}**
 📆 За этот месяц: **{stats.notes_this_month}**"""
     
-    await message.answer(text, parse_mode=ParseMode.MARKDOWN)
+    await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("ask"))
 async def cmd_ask(message: Message):
-    """Handle /ask command - RAG query."""
+    """Handle legacy /ask command - RAG query."""
     if not check_user_allowed(message.from_user.id):
         return
     
@@ -299,99 +581,13 @@ async def cmd_ask(message: Message):
             parse_mode=ParseMode.MARKDOWN
         )
         return
- 
-    # Immediate state to avoid silent waiting after /ask.
-    status_msg = await message.answer("⏳ Принял вопрос, готовлю поиск...")
 
     user = await notes_service.get_or_create_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name
     )
-    
-    # Check subscription for AI chat feature
-    can_use, plan, reason = await notes_service.can_use_feature(user.id, "chat")
-    if not can_use:
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-
-        if reason == "free_plan":
-            await message.answer(
-                "🔒 **AI-чат недоступен**\n\n"
-                "На бесплатном плане AI-поиск по заметкам не поддерживается.\n\n"
-                "Оформите подписку Pro или Ultra, чтобы задавать вопросы по своим заметкам.",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=get_notes_inline_keyboard()
-            )
-            return
-        elif reason == "not_available":
-            await message.answer(
-                "🔒 **AI-чат недоступен**\n\n"
-                f"На плане {plan.title()} AI-чат не поддерживается.\n\n"
-                "Обновите подписку для доступа к этой функции.",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=get_notes_inline_keyboard()
-            )
-            return
- 
-    await status_msg.edit_text("🔍 Ищу в твоих заметках...")
-    
-    # Search for relevant notes
-    try:
-        results = await asyncio.wait_for(
-            rag_service.search_with_threshold(
-                query=question,
-                user_id=str(user.id),
-                limit=5,
-                min_similarity=0.2
-            ),
-            timeout=25.0,
-        )
-    except asyncio.TimeoutError:
-        await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
-        return
-    except Exception as e:
-        logger.error(f"RAG search failed: {e}")
-        await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
-        return
-    
-    if not results:
-        await status_msg.edit_text(
-            "😕 Не нашёл релевантных заметок. Попробуй переформулировать вопрос или добавь больше заметок."
-        )
-        return
-    
-    # Convert results to dict for summarizer
-    context = [
-        {
-            "content": r.content,
-            "summary": r.summary,
-            "similarity": r.similarity
-        }
-        for r in results
-    ]
-    
-    # Generate AI response
-    await status_msg.edit_text("Формирую ответ...")
-    try:
-        answer = await asyncio.wait_for(
-            summarizer_service.ask(question, context),
-            timeout=45.0,
-        )
-    except asyncio.TimeoutError:
-        await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
-        return
-    except Exception as e:
-        logger.error(f"RAG answer generation failed: {e}")
-        await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
-        return
-    
-    # Track chat usage
-    await notes_service.increment_usage(user.id, "chat_messages", 1)
-    
-    await status_msg.edit_text(format_ai_answer_html(answer), parse_mode=ParseMode.HTML)
+    await run_rag_answer(message, user, question, initial_state="⏳ Принял вопрос, готовлю поиск...")
 
 
 @router.message(Command("status"))
@@ -414,6 +610,63 @@ async def cmd_status(message: Message):
 🗄 Qdrant (vector DB): {"✅" if qdrant_ok else "❌"}"""
     
     await status_msg.edit_text(status_text, parse_mode=ParseMode.MARKDOWN)
+
+
+@router.callback_query(F.data.startswith("intent:"))
+async def handle_intent_choice(callback: CallbackQuery):
+    """Handle explicit user choice for ambiguous message intent."""
+    data = callback.data or ""
+    parts = data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Некорректный выбор", show_alert=True)
+        return
+
+    _, token, action = parts
+    if action not in {"ask", "note"}:
+        await callback.answer("Некорректный выбор", show_alert=True)
+        return
+    payload = pending_intent_buffer.pop(token, None)
+    if not payload:
+        await callback.answer("Этот выбор уже устарел. Отправь сообщение снова.", show_alert=True)
+        return
+
+    if payload.get("telegram_user_id") != callback.from_user.id:
+        await callback.answer("Это не твой выбор.", show_alert=True)
+        return
+
+    await callback.answer()
+    if callback.message:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+    user = await notes_service.get_or_create_user(
+        telegram_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name
+    )
+
+    source = payload.get("source", "text")
+    text = payload.get("text", "")
+    urls = payload.get("urls") or []
+    voice_duration = payload.get("voice_duration")
+    voice_url = payload.get("voice_url")
+
+    if not callback.message:
+        return
+
+    if action == "ask":
+        can_chat, _, _ = await notes_service.can_use_feature(user.id, "chat")
+        if can_chat:
+            await run_rag_answer(callback.message, user, text, initial_state="⏳ Принял вопрос, готовлю поиск...")
+            return
+        await callback.message.answer("AI-чат недоступен на твоем плане. Сохраняю это как заметку.")
+
+    if source == "voice":
+        await save_voice_note(callback.message, user, text, voice_duration, voice_url)
+    else:
+        await save_text_note(callback.message, user, text, urls=urls)
 
 
 # Inline query handler for sharing notes
@@ -477,7 +730,7 @@ async def handle_inline_query(inline_query: InlineQuery):
 # Content handlers
 @router.message(F.voice)
 async def handle_voice(message: Message):
-    """Handle voice message - transcribe and save as note."""
+    """Handle voice message - transcribe and route to ask/note flow."""
     if not check_user_allowed(message.from_user.id):
         return
     
@@ -538,50 +791,24 @@ async def handle_voice(message: Message):
         # Track voice usage (in seconds)
         await notes_service.increment_usage(user.id, "voice_seconds", message.voice.duration or 0)
         
-        # Check subscription for summary feature (title + summary via DeepSeek)
-        can_summarize, _, _ = await notes_service.can_use_feature(user.id, "summary")
-        
-        title, summary = None, None
-        if can_summarize:
-            await status_msg.edit_text("✨ Создаю заголовок и саммари...")
-            title, summary = await summarizer_service.summarize_with_title(transcription, user.language_code)
-            if title or summary:
-                await notes_service.increment_usage(user.id, "summaries", 1)
-        
-        # Save note
-        note = await notes_service.create_note(
-            user_id=user.id,
-            note_data=NoteCreate(
-                content=transcription,
-                title=title,
-                summary=summary,
-                source="voice",
-                duration_seconds=message.voice.duration,
-                voice_url=voice_url
-            ),
-            user_language=user.language_code
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await route_message_by_intent(
+            message=message,
+            user=user,
+            text=transcription,
+            source="voice",
+            voice_duration=message.voice.duration,
+            voice_url=voice_url,
         )
-        
-        # Index for RAG
-        await rag_service.index_note(str(note.id), str(user.id), transcription)
-        
-        # Final response - edit the same message
-        response = "✅ **Заметка сохранена!**"
-        if title:
-            response += f"\n\n📌 **{title}**"
-        if summary:
-            response += f"\n\n💡 **Саммари:**\n{summary[:200]}{'...' if len(summary) > 200 else ''}"
-        elif not can_summarize:
-            response += "\n\n_💡 AI-саммари недоступно на вашем плане_"
-        
-        keyboard = get_note_open_keyboard(str(note.id))
-        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
         
     except Exception as e:
         logger.error(f"Voice processing error: {e}")
         try:
             await status_msg.edit_text("❌ Произошла ошибка при обработке. Попробуй позже.")
-        except:
+        except Exception:
             await message.answer("❌ Произошла ошибка при обработке. Попробуй позже.")
 
 
@@ -817,87 +1044,25 @@ async def handle_text(message: Message):
     )
     
     text = message.text.strip()
-    
-    # Check if it's a question (for RAG)
-    is_question = (
-        text.endswith("?") or 
-        text.lower().startswith(("что ", "как ", "где ", "когда ", "почему ", "кто ", "какой ", "сколько "))
+    urls = extract_urls_from_message(message)
+    await route_message_by_intent(
+        message=message,
+        user=user,
+        text=text,
+        source="text",
+        urls=urls,
     )
-    
-    if is_question and len(text) < 200:
-        # Check subscription for AI chat feature
-        can_use, _, _ = await notes_service.can_use_feature(user.id, "chat")
-        
-        if not can_use:
-            # Can't use AI - just save as note
-            await save_text_note(message, user, text)
-            return
-        
-        # Treat as AI query - edit single message
-        status_msg = await message.answer("🔍 Ищу ответ в заметках...")
-        
-        try:
-            results = await asyncio.wait_for(
-                rag_service.search_with_threshold(
-                    query=text,
-                    user_id=str(user.id),
-                    limit=5,
-                    min_similarity=0.2
-                ),
-                timeout=25.0,
-            )
-        except asyncio.TimeoutError:
-            await status_msg.edit_text("Слишком долгий поиск по заметкам. Попробуй повторить запрос.")
-            return
-        except Exception as e:
-            logger.error(f"Text RAG search failed: {e}")
-            await status_msg.edit_text("Ошибка поиска по заметкам. Попробуй позже.")
-            return
-        
-        if results:
-            context = [
-                {
-                    "content": r.content,
-                    "summary": r.summary,
-                    "similarity": r.similarity
-                }
-                for r in results
-            ]
-            await status_msg.edit_text("Формирую ответ...")
-            try:
-                answer = await asyncio.wait_for(
-                    summarizer_service.ask(text, context),
-                    timeout=45.0,
-                )
-            except asyncio.TimeoutError:
-                await status_msg.edit_text("Генерация ответа заняла слишком много времени. Попробуй еще раз.")
-                return
-            except Exception as e:
-                logger.error(f"Text RAG answer generation failed: {e}")
-                await status_msg.edit_text("Ошибка генерации ответа. Попробуй позже.")
-                return
-            
-            # Track chat usage
-            await notes_service.increment_usage(user.id, "chat_messages", 1)
-            
-            await status_msg.edit_text(format_ai_answer_html(answer), parse_mode=ParseMode.HTML)
-        else:
-            # No results - save as note instead
-            await status_msg.delete()
-            await save_text_note(message, user, text)
-    else:
-        # Save as note
-        await save_text_note(message, user, text)
 
 
-async def save_text_note(message: Message, user, text: str):
+async def save_text_note(message: Message, user, text: str, urls: Optional[List[str]] = None):
     """Save text as a note. Generate title (and summary) via DeepSeek when allowed."""
     # Send initial status message
     status_msg = await message.answer("📝 Сохраняю заметку...")
     
     try:
         # Extract URLs from message entities and add to content
-        urls = extract_urls_from_message(message)
+        if urls is None:
+            urls = extract_urls_from_message(message)
         if urls:
             text += "\n\n" + "\n".join(urls)
         
