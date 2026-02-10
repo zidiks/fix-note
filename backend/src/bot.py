@@ -57,7 +57,7 @@ media_group_tasks: dict[str, asyncio.Task] = {}
 def format_ai_answer_html(answer: str) -> str:
     """Render model output to Telegram-safe HTML with light formatting."""
     if not answer:
-        return "рџ’Ў <b>РћС‚РІРµС‚:</b>\n\nРќРµ СѓРґР°Р»РѕСЃСЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ РѕС‚РІРµС‚."
+        return "<b>Answer:</b>\n\nCould not generate an answer."
 
     escaped = html.escape(answer.strip())
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
@@ -66,7 +66,7 @@ def format_ai_answer_html(answer: str) -> str:
     lines: List[str] = []
     for line in escaped.splitlines():
         line = re.sub(r"^\s*#{1,6}\s+(.*)$", r"<b>\1</b>", line)
-        line = re.sub(r"^\s*[\-\*]\s+", "вЂў ", line)
+        line = re.sub(r"^\s*[\-\*]\s+", "- ", line)
         lines.append(line)
 
     body = "\n".join(lines).strip()
@@ -74,7 +74,7 @@ def format_ai_answer_html(answer: str) -> str:
     if len(body) > 3600:
         body = body[:3597] + "..."
 
-    return f"рџ’Ў <b>РћС‚РІРµС‚:</b>\n\n{body}"
+    return f"<b>Answer:</b>\n\n{body}"
 
 
 async def get_telegram_file_url(file_id: str) -> Optional[str]:
