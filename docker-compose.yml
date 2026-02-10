@@ -50,7 +50,7 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
     container_name: voice-notes-embeddings
     restart: unless-stopped
-    command: ["--model-id", "${EMBEDDINGS_MODEL:-intfloat/multilingual-e5-base}"]
+    command: ["--model-id", "${EMBEDDINGS_MODEL:-intfloat/multilingual-e5-base}", "--auto-truncate"]
     environment:
       - HF_HOME=/data
     volumes:

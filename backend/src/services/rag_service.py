@@ -123,7 +123,10 @@ class RAGService:
         return embeddings  # type: ignore[return-value]
 
     async def _embed_texts(self, texts: List[str]) -> List[List[float]]:
-        payload = {"inputs": texts if len(texts) > 1 else texts[0]}
+        payload = {
+            "inputs": texts if len(texts) > 1 else texts[0],
+            "truncate": True,
+        }
         max_attempts = 6
         backoff_sec = 1.5
         response = None

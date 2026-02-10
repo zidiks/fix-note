@@ -88,7 +88,10 @@ def _parse_embeddings_response(data) -> List[List[float]]:
 
 def _embed_texts(client: httpx.Client, base_url: str, model: str, texts: List[str]) -> List[List[float]]:
     url = base_url.rstrip("/")
-    payload = {"inputs": texts if len(texts) > 1 else texts[0]}
+    payload = {
+        "inputs": texts if len(texts) > 1 else texts[0],
+        "truncate": True,
+    }
     max_attempts = 20
     backoff_sec = 3
 
