@@ -163,6 +163,47 @@ class RAGService:
 
         return embeddings
 
+    async def _search_points(
+        self,
+        query_embedding: List[float],
+        user_id: str,
+        limit: int,
+    ) -> List:
+        qfilter = qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="user_id",
+                    match=qmodels.MatchValue(value=str(user_id)),
+                )
+            ]
+        )
+
+        # Newer qdrant-client versions expose query_points on async client.
+        if hasattr(self.qdrant, "query_points"):
+            response = await self.qdrant.query_points(
+                collection_name=self.collection,
+                query=query_embedding,
+                query_filter=qfilter,
+                limit=limit,
+                with_payload=False,
+            )
+            if isinstance(response, list):
+                return response
+            return list(getattr(response, "points", []) or [])
+
+        # Fallback for older clients.
+        if hasattr(self.qdrant, "search"):
+            response = await self.qdrant.search(
+                collection_name=self.collection,
+                query_vector=query_embedding,
+                limit=limit,
+                query_filter=qfilter,
+                with_payload=False,
+            )
+            return list(response or [])
+
+        raise RuntimeError("Qdrant client has no compatible search method")
+
     async def get_embedding(self, text: str) -> List[float]:
         """
         Get embedding vector for text via TEI.
@@ -218,20 +259,7 @@ class RAGService:
         try:
             await self._ensure_collection()
             query_embedding = await self.get_embedding(query)
-            results = await self.qdrant.search(
-                collection_name=self.collection,
-                query_vector=query_embedding,
-                limit=limit,
-                query_filter=qmodels.Filter(
-                    must=[
-                        qmodels.FieldCondition(
-                            key="user_id",
-                            match=qmodels.MatchValue(value=str(user_id)),
-                        )
-                    ]
-                ),
-                with_payload=False,
-            )
+            results = await self._search_points(query_embedding, user_id, limit)
 
             if not results:
                 return []
