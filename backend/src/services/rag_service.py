@@ -5,6 +5,7 @@ from uuid import UUID
 import asyncio
 import httpx
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http import models as qmodels
 
 from ..config import settings
@@ -34,21 +35,52 @@ class RAGService:
             api_key=settings.vector_db_api_key or None
         )
 
+    @staticmethod
+    def _extract_dimension(info) -> Optional[int]:
+        config = getattr(info, "config", None)
+        params = getattr(config, "params", None)
+        if not params:
+            return None
+
+        vectors = getattr(params, "vectors", None)
+        if vectors is not None:
+            if hasattr(vectors, "size"):
+                return int(vectors.size)
+            if isinstance(vectors, dict):
+                for value in vectors.values():
+                    size = getattr(value, "size", None)
+                    if size is not None:
+                        return int(size)
+
+        size = getattr(params, "size", None)
+        if size is not None:
+            return int(size)
+
+        return None
+
     async def _ensure_collection(self) -> None:
         if self._collection_ready:
             return
+        exists = False
         try:
             info = await self.qdrant.get_collection(self.collection)
-            vectors = getattr(info, "config", None)
-            vector_params = getattr(vectors, "params", None)
-            if vector_params and vector_params.size != self.embedding_dimensions:
+            exists = True
+            current_dim = self._extract_dimension(info)
+            if current_dim is not None and current_dim != self.embedding_dimensions:
                 logger.warning(
                     "Qdrant collection %s dimension mismatch: expected %s, got %s",
                     self.collection,
                     self.embedding_dimensions,
-                    vector_params.size,
+                    current_dim,
                 )
+        except UnexpectedResponse as exc:
+            if exc.status_code != 404:
+                raise
         except Exception:
+            # Compatibility fallback for older client versions.
+            pass
+
+        if not exists:
             await self.qdrant.create_collection(
                 collection_name=self.collection,
                 vectors_config=qmodels.VectorParams(

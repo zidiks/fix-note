@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 import httpx
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http import models as qmodels
 from supabase import create_client
 
@@ -115,13 +116,45 @@ def _embed_texts(client: httpx.Client, base_url: str, model: str, texts: List[st
     raise RuntimeError("Failed to get embeddings after retries")
 
 
+def _extract_dimension(info) -> Optional[int]:
+    config = getattr(info, "config", None)
+    params = getattr(config, "params", None)
+    if not params:
+        return None
+
+    vectors = getattr(params, "vectors", None)
+    if vectors is not None:
+        if hasattr(vectors, "size"):
+            return int(vectors.size)
+        if isinstance(vectors, dict):
+            for value in vectors.values():
+                size = getattr(value, "size", None)
+                if size is not None:
+                    return int(size)
+
+    size = getattr(params, "size", None)
+    if size is not None:
+        return int(size)
+
+    return None
+
+
 def _ensure_collection(client: QdrantClient, collection: str, dim: int) -> None:
+    exists = False
     try:
         info = client.get_collection(collection)
-        params = getattr(getattr(info, "config", None), "params", None)
-        if params and params.size != dim:
-            logger.warning("Collection dimension mismatch: expected %s, got %s", dim, params.size)
+        exists = True
+        current_dim = _extract_dimension(info)
+        if current_dim is not None and current_dim != dim:
+            logger.warning("Collection dimension mismatch: expected %s, got %s", dim, current_dim)
+    except UnexpectedResponse as exc:
+        if exc.status_code != 404:
+            raise
     except Exception:
+        # For compatibility with older client versions where 404 can surface differently.
+        pass
+
+    if not exists:
         client.create_collection(
             collection_name=collection,
             vectors_config=qmodels.VectorParams(size=dim, distance=qmodels.Distance.COSINE),
