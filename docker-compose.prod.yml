@@ -13,6 +13,8 @@ services:
       - "8010:8000"
     depends_on:
       - whisper
+      - embeddings
+      - qdrant
     networks:
       - voice-notes-net
     healthcheck:
@@ -49,12 +51,37 @@ services:
       timeout: 10s
       retries: 3
 
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    container_name: voice-notes-embeddings
+    restart: unless-stopped
+    environment:
+      - MODEL_ID=intfloat/multilingual-e5-base
+      - HF_HOME=/data
+    volumes:
+      - tei-cache:/data
+    networks:
+      - voice-notes-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: voice-notes-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant-storage:/qdrant/storage
+    networks:
+      - voice-notes-net
+
 networks:
   voice-notes-net:
     driver: bridge
 
 volumes:
   whisper-models:
+  tei-cache:
+  qdrant-storage:
+
+
 
 
 

@@ -17,7 +17,16 @@ class Settings(BaseSettings):
     # AI Services
     deepseek_api_key: str
     deepseek_api_url: str = "https://api.deepseek.com"
-    openai_api_key: str  # For embeddings
+    openai_api_key: str = ""  # Optional (legacy embeddings)
+
+    # Embeddings + Vector DB (self-hosted)
+    embeddings_api_url: str = "http://embeddings:80"
+    embeddings_model: str = "intfloat/multilingual-e5-base"
+    embeddings_dimensions: int = 768
+    embeddings_timeout_sec: int = 30
+    vector_db_url: str = "http://qdrant:6333"
+    vector_db_api_key: str = ""
+    vector_db_collection: str = "notes_embeddings"
 
     # Notes encryption
     notes_master_key: str

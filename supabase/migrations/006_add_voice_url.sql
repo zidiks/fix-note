@@ -11,3 +11,5 @@ COMMENT ON COLUMN notes.voice_url IS 'URL of the voice file for voice notes';
 
 
 
+
+

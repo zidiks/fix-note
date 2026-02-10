@@ -246,7 +246,7 @@ async def create_note(
     note = await notes_service.create_note(user.id, note_data, user.language_code)
     
     # Index for RAG
-    await rag_service.index_note(str(note.id), note.content)
+    await rag_service.index_note(str(note.id), str(user.id), note.content)
     
     # Trigger auto-sync for Ultra users (in background)
     background_tasks.add_task(trigger_auto_sync_for_note, str(user.id), str(note.id))
@@ -268,7 +268,7 @@ async def update_note(
     
     # Re-index if content changed
     if note_data.content:
-        await rag_service.index_note(str(note.id), note.content)
+        await rag_service.index_note(str(note.id), str(user.id), note.content)
     
     # Trigger auto-sync for Ultra users (in background)
     background_tasks.add_task(trigger_auto_sync_for_note, str(user.id), str(note.id))
@@ -286,6 +286,9 @@ async def delete_note(
     deleted = await notes_service.delete_note(note_id, user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Note not found")
+
+    # Cleanup vector entry (best-effort)
+    await rag_service.delete_note(str(note_id), str(user.id))
     
     # Archive in Notion if synced (in background)
     background_tasks.add_task(archive_note_in_notion, str(user.id), str(note_id))

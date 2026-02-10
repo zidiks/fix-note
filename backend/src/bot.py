@@ -346,13 +346,14 @@ async def cmd_status(message: Message):
     
     whisper_ok = await transcription_service.health_check()
     deepseek_ok = await summarizer_service.health_check()
-    openai_ok = await rag_service.health_check()
+    embeddings_ok, qdrant_ok = await rag_service.health_details()
     
     status_text = f"""📡 **Статус сервисов:**
 
 🎙 Whisper (транскрипция): {"✅" if whisper_ok else "❌"}
 🤖 DeepSeek (саммари): {"✅" if deepseek_ok else "❌"}
-🔍 OpenAI (embeddings): {"✅" if openai_ok else "❌"}"""
+🔍 TEI (embeddings): {"✅" if embeddings_ok else "❌"}
+🗄 Qdrant (vector DB): {"✅" if qdrant_ok else "❌"}"""
     
     await status_msg.edit_text(status_text, parse_mode=ParseMode.MARKDOWN)
 
@@ -504,7 +505,7 @@ async def handle_voice(message: Message):
         )
         
         # Index for RAG
-        await rag_service.index_note(str(note.id), transcription)
+        await rag_service.index_note(str(note.id), str(user.id), transcription)
         
         # Final response - edit the same message
         response = "✅ **Заметка сохранена!**"
@@ -604,7 +605,7 @@ async def process_forwarded_messages(user_id: int, chat_id: int):
         )
         
         # Index for RAG
-        await rag_service.index_note(str(note.id), combined_text)
+        await rag_service.index_note(str(note.id), str(user.id), combined_text)
         
         # Final response with button
         msg_count = len(messages)
@@ -701,7 +702,7 @@ async def process_media_group(media_group_id: str, user_id: int, chat_id: int):
         )
         
         # Index for RAG
-        await rag_service.index_note(str(note.id), content)
+        await rag_service.index_note(str(note.id), str(user.id), content)
         
         # Final response with button
         response = f"✅ **Сохранено {len(image_urls)} фото как заметка!**"
@@ -839,7 +840,7 @@ async def save_text_note(message: Message, user, text: str):
         )
 
         # Index for RAG
-        await rag_service.index_note(str(note.id), text)
+        await rag_service.index_note(str(note.id), str(user.id), text)
 
         # Final response with button to open note
         response = "✅ **Заметка сохранена!**"
@@ -963,7 +964,7 @@ async def handle_photo(message: Message):
         )
         
         # Index for RAG
-        await rag_service.index_note(str(note.id), content)
+        await rag_service.index_note(str(note.id), str(user.id), content)
         
         # Final response with button
         response = "✅ **Заметка сохранена!**"
