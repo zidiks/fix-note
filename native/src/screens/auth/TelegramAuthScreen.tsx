@@ -22,8 +22,7 @@ type Props = {
 // Telegram Login Widget is served from our backend so it has a real domain origin.
 // The domain (fixnote.space) must be configured in BotFather via /setdomain.
 const TELEGRAM_AUTH_URL =
-  (process.env.EXPO_PUBLIC_API_URL || 'https://fixnote.space/api').replace(/\/api$/, '') +
-  '/telegram-auth';
+  (process.env.EXPO_PUBLIC_API_URL || 'https://fixnote.space/api') + '/telegram-auth';
 
 export default function TelegramAuthScreen({ navigation }: Props) {
   const { colors } = useTheme();

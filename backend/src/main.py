@@ -96,7 +96,7 @@ async def health():
     return {"status": "ok"}
 
 
-@app.get("/telegram-auth", response_class=HTMLResponse)
+@app.get("/api/telegram-auth", response_class=HTMLResponse)
 async def telegram_auth_page():
     """
     Serve the Telegram Login Widget page for the native app.

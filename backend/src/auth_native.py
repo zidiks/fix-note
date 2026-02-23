@@ -187,12 +187,14 @@ async def login_with_apple(request: AppleAuthRequest):
         if not matching_key:
             raise HTTPException(401, "Apple public key not found")
 
-        # Verify and decode the identity token
+        # Verify and decode the identity token.
+        # Accept both production bundle ID and Expo Go bundle ID for development.
+        accepted_audiences = [settings.apple_bundle_id, "host.exp.exponent"]
         payload = jwt.decode(
             request.identity_token,
             matching_key,
             algorithms=["RS256"],
-            audience=settings.apple_bundle_id,
+            audience=accepted_audiences,
             issuer="https://appleid.apple.com",
         )
 
