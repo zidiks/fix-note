@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import RootNavigator, { navigationRef } from '../navigation/RootNavigator';
 import { setNavigationRef, setupDeepLinkHandler } from '../utils/deepLink';
 
@@ -26,7 +25,7 @@ export default function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <View style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <NavigationContainer
           ref={navigationRef}
@@ -40,7 +39,7 @@ export default function App() {
           <RootNavigator />
         </NavigationContainer>
       </QueryClientProvider>
-    </GestureHandlerRootView>
+    </View>
   );
 }
 

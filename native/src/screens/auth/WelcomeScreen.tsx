@@ -10,17 +10,26 @@ import {
   Alert,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme/useTheme';
 import { useAuthStore } from '../../stores/auth';
 import { authApi } from '../../api/auth';
 
-GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-});
+// Lazy accessor — avoids TurboModule crash in Expo Go
+function getGoogleSignin() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    });
+    return GoogleSignin;
+  } catch {
+    return null;
+  }
+}
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
@@ -58,10 +67,15 @@ export default function WelcomeScreen({ navigation }: Props) {
   };
 
   const handleGoogleAuth = async () => {
+    const GoogleSignin = getGoogleSignin();
+    if (!GoogleSignin) {
+      Alert.alert('Недоступно', 'Google Sign-In недоступен в Expo Go. Используй dev build.');
+      return;
+    }
     setLoading('google');
     try {
       await GoogleSignin.hasPlayServices();
-      const userInfo = await GoogleSignin.signIn();
+      await GoogleSignin.signIn();
       const tokens = await GoogleSignin.getTokens();
       const response = await authApi.loginWithGoogle({ id_token: tokens.idToken! });
       await saveAuth(response.access_token, response.user);

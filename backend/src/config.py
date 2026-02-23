@@ -7,6 +7,7 @@ from typing import List, Optional
 class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str
+    telegram_bot_username: str = ""  # Bot username without @, e.g. "FixNoteBot"
     allowed_user_ids: str = ""  # Comma-separated list or empty
     
     # Supabase

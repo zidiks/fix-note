@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,16 +7,8 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
+  Animated,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  withSequence,
-  runOnJS,
-} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../theme/useTheme';
 import { useAudioRecorder } from './useAudioRecorder';
@@ -34,21 +26,25 @@ export default function RecordButton({ onNoteCreated }: Props) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const pulseScale = useSharedValue(1);
+  const pulseScale = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef<Animated.CompositeAnimation | null>(null);
 
   const startPulse = () => {
-    pulseScale.value = withRepeat(
-      withSequence(withTiming(1.2, { duration: 600 }), withTiming(1, { duration: 600 })),
-      -1,
-      false
+    pulseAnim.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseScale, { toValue: 1.2, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseScale, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ])
     );
+    pulseAnim.current.start();
   };
 
   const stopPulse = () => {
-    pulseScale.value = withTiming(1, { duration: 200 });
+    pulseAnim.current?.stop();
+    Animated.timing(pulseScale, { toValue: 1, duration: 200, useNativeDriver: true }).start();
   };
 
-  const handleComplete = async (uri: string, fileName: string, durationSeconds: number) => {
+  const handleComplete = async (uri: string, fileName: string, _durationSeconds: number) => {
     setIsUploading(true);
     setUploadError(null);
     try {
@@ -63,7 +59,7 @@ export default function RecordButton({ onNoteCreated }: Props) {
     }
   };
 
-  const { state, durationSeconds, startRecording, stopRecording, cancelRecording, isRecording } =
+  const { durationSeconds, startRecording, stopRecording, cancelRecording, isRecording } =
     useAudioRecorder({
       onComplete: handleComplete,
       onError: (err) => {
@@ -72,45 +68,41 @@ export default function RecordButton({ onNoteCreated }: Props) {
       },
     });
 
-  const longPressGesture = Gesture.LongPress()
-    .minDuration(300)
-    .onStart(() => {
-      runOnJS(startRecording)();
-      runOnJS(startPulse)();
-    })
-    .onEnd(() => {
-      runOnJS(stopRecording)();
-      runOnJS(stopPulse)();
-    })
-    .onFinalize((_, success) => {
-      if (!success) {
-        runOnJS(cancelRecording)();
-        runOnJS(stopPulse)();
-      }
-    });
+  const handleLongPress = () => {
+    startRecording();
+    startPulse();
+  };
 
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-  }));
+  const handlePressOut = () => {
+    if (isRecording) {
+      stopRecording();
+      stopPulse();
+    }
+  };
 
   const showOverlay = isRecording || isUploading;
 
   return (
     <>
-      <GestureDetector gesture={longPressGesture}>
-        <Animated.View style={[styles.buttonWrapper, pulseStyle]}>
+      <TouchableOpacity
+        onLongPress={handleLongPress}
+        onPressOut={handlePressOut}
+        delayLongPress={300}
+        activeOpacity={0.8}
+      >
+        <Animated.View
+          style={[styles.buttonWrapper, { transform: [{ scale: pulseScale }] }]}
+        >
           <View
             style={[
               styles.button,
-              {
-                backgroundColor: isRecording ? colors.destructive : colors.accent,
-              },
+              { backgroundColor: isRecording ? colors.destructive : colors.accent },
             ]}
           >
             <Text style={styles.icon}>{isRecording ? '⏹' : '🎙️'}</Text>
           </View>
         </Animated.View>
-      </GestureDetector>
+      </TouchableOpacity>
 
       {/* Recording Overlay Modal */}
       <Modal visible={showOverlay} transparent animationType="fade">

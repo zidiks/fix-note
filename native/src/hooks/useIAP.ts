@@ -1,16 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  initConnection,
-  endConnection,
-  getSubscriptions,
-  requestSubscription,
-  purchaseUpdatedListener,
-  purchaseErrorListener,
-  finishTransaction,
-  type SubscriptionAndroid,
-  type SubscriptionIOS,
-  type Purchase,
-} from 'react-native-iap';
 import { Platform } from 'react-native';
 import { subscriptionApi } from '../api/subscription';
 import { useSubscription } from '../stores/subscription';
@@ -30,39 +18,50 @@ const ALL_PRODUCT_IDS = [
   IAP_PRODUCT_IDS.ultra.yearly,
 ];
 
+// Lazy accessor — avoids TurboModule crash in Expo Go
+function getRNIap() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('react-native-iap');
+  } catch {
+    return null;
+  }
+}
+
 export function useIAP() {
   const { fetchSubscription } = useSubscription();
-  const [products, setProducts] = useState<(SubscriptionIOS | SubscriptionAndroid)[]>([]);
+  const [products, setProducts] = useState<unknown[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    let purchaseUpdateSub: ReturnType<typeof purchaseUpdatedListener>;
-    let purchaseErrorSub: ReturnType<typeof purchaseErrorListener>;
+    const iap = getRNIap();
+    if (!iap) return; // Expo Go — IAP not available
+
+    let purchaseUpdateSub: { remove: () => void } | undefined;
+    let purchaseErrorSub: { remove: () => void } | undefined;
 
     const connect = async () => {
       try {
-        await initConnection();
+        await iap.initConnection();
         setIsConnected(true);
 
-        // Load product metadata (prices from store)
-        const subs = await getSubscriptions({ skus: ALL_PRODUCT_IDS });
-        setProducts(subs as (SubscriptionIOS | SubscriptionAndroid)[]);
+        const subs = await iap.getSubscriptions({ skus: ALL_PRODUCT_IDS });
+        setProducts(subs);
 
-        // Listen for purchase events
-        purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-          await handlePurchase(purchase);
+        purchaseUpdateSub = iap.purchaseUpdatedListener(async (purchase: unknown) => {
+          await handlePurchase(purchase as { transactionReceipt?: string; productId: string; transactionId?: string; purchaseToken?: string });
         });
 
-        purchaseErrorSub = purchaseErrorListener((err) => {
-          if ((err as { code?: string }).code !== 'E_USER_CANCELLED') {
+        purchaseErrorSub = iap.purchaseErrorListener((err: { code?: string; message?: string }) => {
+          if (err.code !== 'E_USER_CANCELLED') {
             setError(err.message ?? 'Purchase error');
           }
           setIsLoading(false);
         });
-      } catch (e) {
-        // IAP not available (simulator, etc.)
+      } catch {
+        // IAP not available (simulator / Expo Go)
       }
     };
 
@@ -71,35 +70,37 @@ export function useIAP() {
     return () => {
       purchaseUpdateSub?.remove();
       purchaseErrorSub?.remove();
-      endConnection();
+      iap.endConnection?.();
     };
   }, []);
 
-  const handlePurchase = useCallback(async (purchase: Purchase) => {
+  const handlePurchase = useCallback(async (purchase: {
+    transactionReceipt?: string;
+    productId: string;
+    transactionId?: string;
+    purchaseToken?: string;
+  }) => {
+    const iap = getRNIap();
     try {
-      if (Platform.OS === 'ios') {
-        const transactionReceipt = purchase.transactionReceipt;
-        if (transactionReceipt) {
-          await subscriptionApi.verifyAppleIAP({
-            receipt_data: transactionReceipt,
-            product_id: purchase.productId,
-            transaction_id: purchase.transactionId ?? '',
-          });
-        }
-      } else if (Platform.OS === 'android') {
-        const purchaseToken = (purchase as { purchaseToken?: string }).purchaseToken;
-        if (purchaseToken) {
-          await subscriptionApi.verifyGooglePlay({
-            purchase_token: purchaseToken,
-            product_id: purchase.productId,
-            order_id: purchase.transactionId ?? '',
-          });
-        }
+      if (Platform.OS === 'ios' && purchase.transactionReceipt) {
+        await subscriptionApi.verifyAppleIAP({
+          receipt_data: purchase.transactionReceipt,
+          product_id: purchase.productId,
+          transaction_id: purchase.transactionId ?? '',
+        });
+      } else if (Platform.OS === 'android' && purchase.purchaseToken) {
+        await subscriptionApi.verifyGooglePlay({
+          purchase_token: purchase.purchaseToken,
+          product_id: purchase.productId,
+          order_id: purchase.transactionId ?? '',
+        });
       }
 
-      await finishTransaction({ purchase, isConsumable: false });
+      if (iap) {
+        await iap.finishTransaction({ purchase, isConsumable: false });
+      }
       await fetchSubscription();
-    } catch (e) {
+    } catch {
       setError('Не удалось подтвердить покупку');
     } finally {
       setIsLoading(false);
@@ -107,13 +108,17 @@ export function useIAP() {
   }, [fetchSubscription]);
 
   const purchasePlan = useCallback(async (plan: Plan, period: BillingPeriod) => {
+    const iap = getRNIap();
+    if (!iap) {
+      setError('IAP недоступен в Expo Go. Используй dev build.');
+      return;
+    }
     const productId = productIdForPlan(plan, period);
     setIsLoading(true);
     setError(null);
 
     try {
-      await requestSubscription({ sku: productId });
-      // handlePurchase is called from purchaseUpdatedListener
+      await iap.requestSubscription({ sku: productId });
     } catch (e: unknown) {
       if ((e as { code?: string }).code !== 'E_USER_CANCELLED') {
         setError('Покупка не выполнена');
@@ -123,9 +128,9 @@ export function useIAP() {
   }, []);
 
   const getLocalizedPrice = useCallback((productId: string): string | null => {
-    const product = products.find((p) => p.productId === productId);
-    if (!product) return null;
-    return (product as { localizedPrice?: string }).localizedPrice ?? null;
+    const product = (products as { productId: string; localizedPrice?: string }[])
+      .find((p) => p.productId === productId);
+    return product?.localizedPrice ?? null;
   }, [products]);
 
   return {

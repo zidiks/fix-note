@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from .config import settings
 from .api import router as api_router, set_bot_instance
@@ -93,6 +94,64 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@app.get("/telegram-auth", response_class=HTMLResponse)
+async def telegram_auth_page():
+    """
+    Serve the Telegram Login Widget page for the native app.
+    Loaded in a WebView — the domain (fixnote.space) must match
+    what is configured in BotFather via /setdomain.
+    """
+    bot_username = settings.telegram_bot_username
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Telegram Login</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #f0f0f2;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }}
+    .container {{
+      text-align: center;
+      padding: 40px 32px;
+    }}
+    h2 {{ color: #29333F; margin-bottom: 12px; font-size: 22px; }}
+    p {{ color: #8C9198; margin-bottom: 28px; font-size: 15px; line-height: 1.4; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Войти через Telegram</h2>
+    <p>Нажмите кнопку ниже для входа через Telegram</p>
+    <script
+      async
+      src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="{bot_username}"
+      data-size="large"
+      data-radius="10"
+      data-onauth="onTelegramAuth(user)"
+      data-request-access="write">
+    </script>
+    <script>
+      function onTelegramAuth(user) {{
+        if (window.ReactNativeWebView) {{
+          window.ReactNativeWebView.postMessage(JSON.stringify(user));
+        }}
+      }}
+    </script>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 def run():

@@ -19,58 +19,11 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'TelegramAuth'>;
 };
 
-// The Telegram Login Widget HTML page
-// Replace YOUR_BOT_USERNAME with your actual bot's username
-const BOT_USERNAME = process.env.EXPO_PUBLIC_TELEGRAM_BOT_USERNAME || 'FixNoteBot';
-const REDIRECT_URL = 'https://fixnote.space/telegram-auth-callback'; // Unused, we handle via postMessage
-
-const TELEGRAM_AUTH_HTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Telegram Login</title>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      background: #f0f0f2;
-      font-family: -apple-system, sans-serif;
-    }
-    .container {
-      text-align: center;
-      padding: 32px;
-    }
-    h2 { color: #29333F; margin-bottom: 24px; }
-    p { color: #8C9198; margin-bottom: 24px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Войти через Telegram</h2>
-    <p>Нажмите кнопку ниже, чтобы войти через ваш аккаунт Telegram</p>
-    <script
-      async
-      src="https://telegram.org/js/telegram-widget.js?22"
-      data-telegram-login="${BOT_USERNAME}"
-      data-size="large"
-      data-radius="10"
-      data-onauth="onTelegramAuth(user)"
-      data-request-access="write">
-    </script>
-    <script>
-      function onTelegramAuth(user) {
-        window.ReactNativeWebView.postMessage(JSON.stringify(user));
-      }
-    </script>
-  </div>
-</body>
-</html>
-`;
+// Telegram Login Widget is served from our backend so it has a real domain origin.
+// The domain (fixnote.space) must be configured in BotFather via /setdomain.
+const TELEGRAM_AUTH_URL =
+  (process.env.EXPO_PUBLIC_API_URL || 'https://fixnote.space/api').replace(/\/api$/, '') +
+  '/telegram-auth';
 
 export default function TelegramAuthScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -111,7 +64,7 @@ export default function TelegramAuthScreen({ navigation }: Props) {
         </View>
       ) : (
         <WebView
-          source={{ html: TELEGRAM_AUTH_HTML }}
+          source={{ uri: TELEGRAM_AUTH_URL }}
           onMessage={handleMessage}
           javaScriptEnabled
           style={{ backgroundColor: colors.bgPrimary }}
