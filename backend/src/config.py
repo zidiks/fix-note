@@ -43,7 +43,20 @@ class Settings(BaseSettings):
     notion_client_id: str = ""
     notion_client_secret: str = ""
     notion_redirect_uri: str = ""  # e.g., https://your-app.com/api/sync/notion/callback
-    
+
+    # Native app JWT auth
+    jwt_secret: str = ""  # Random secret for signing JWTs for native app users
+    jwt_algorithm: str = "HS256"
+    jwt_expire_days: int = 90
+
+    # Apple IAP (App Store)
+    apple_bundle_id: str = "com.fixnote.app"
+    apple_iap_shared_secret: str = ""  # From App Store Connect
+
+    # Google Play Billing
+    google_play_package_name: str = "com.fixnote.app"
+    google_service_account_key: str = ""  # JSON string of service account key
+
     @property
     def allowed_user_ids_list(self) -> List[int]:
         """Parse allowed_user_ids as a list of integers."""

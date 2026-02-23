@@ -244,10 +244,163 @@ class NotesService:
         result = self.client.table("users").select("*").eq(
             "telegram_id", telegram_id
         ).execute()
-        
+
         if result.data:
             return User(**result.data[0])
         return None
+
+    async def get_user_by_id(self, user_id: UUID) -> Optional[User]:
+        """Get user by UUID (used for JWT-based auth)."""
+        result = self.client.table("users").select("*").eq(
+            "id", str(user_id)
+        ).execute()
+        if result.data:
+            return User(**result.data[0])
+        return None
+
+    async def get_or_create_user_apple(
+        self,
+        apple_id: str,
+        email: Optional[str] = None,
+        display_name: Optional[str] = None,
+    ) -> User:
+        """Get existing user or create new one by Apple ID."""
+        result = self.client.table("users").select("*").eq(
+            "apple_id", apple_id
+        ).execute()
+
+        if result.data:
+            user_data = result.data[0]
+            updates = {}
+            if email and not user_data.get("email"):
+                updates["email"] = email
+            if display_name and not user_data.get("display_name"):
+                updates["display_name"] = display_name
+            if updates:
+                upd = self.client.table("users").update(updates).eq(
+                    "id", user_data["id"]
+                ).execute()
+                user_data = upd.data[0]
+            return User(**user_data)
+
+        user_id = str(uuid4())
+        data_key = self.crypto.generate_data_key()
+        wrapped = self.crypto.wrap_data_key(data_key, f"{user_id}:notes_key")
+        now = datetime.utcnow()
+        trial_ends_at = now + timedelta(days=5)
+        new_user = {
+            "id": user_id,
+            "apple_id": apple_id,
+            "email": email,
+            "display_name": display_name,
+            "auth_provider": "apple",
+            "subscription_plan": "trial",
+            "subscription_started_at": now.isoformat(),
+            "subscription_expires_at": trial_ends_at.isoformat(),
+            "trial_started_at": now.isoformat(),
+            "trial_ends_at": trial_ends_at.isoformat(),
+            "notes_key_enc": wrapped,
+            "notes_key_version": self.crypto.master_key_version,
+        }
+        result = self.client.table("users").insert(new_user).execute()
+        self._cache_user_key(user_id, data_key)
+        return User(**result.data[0])
+
+    async def get_or_create_user_google(
+        self,
+        google_id: str,
+        email: Optional[str] = None,
+        display_name: Optional[str] = None,
+    ) -> User:
+        """Get existing user or create new one by Google ID."""
+        result = self.client.table("users").select("*").eq(
+            "google_id", google_id
+        ).execute()
+
+        if result.data:
+            user_data = result.data[0]
+            updates = {}
+            if email and not user_data.get("email"):
+                updates["email"] = email
+            if display_name and not user_data.get("display_name"):
+                updates["display_name"] = display_name
+            if updates:
+                upd = self.client.table("users").update(updates).eq(
+                    "id", user_data["id"]
+                ).execute()
+                user_data = upd.data[0]
+            return User(**user_data)
+
+        user_id = str(uuid4())
+        data_key = self.crypto.generate_data_key()
+        wrapped = self.crypto.wrap_data_key(data_key, f"{user_id}:notes_key")
+        now = datetime.utcnow()
+        trial_ends_at = now + timedelta(days=5)
+        new_user = {
+            "id": user_id,
+            "google_id": google_id,
+            "email": email,
+            "display_name": display_name,
+            "auth_provider": "google",
+            "subscription_plan": "trial",
+            "subscription_started_at": now.isoformat(),
+            "subscription_expires_at": trial_ends_at.isoformat(),
+            "trial_started_at": now.isoformat(),
+            "trial_ends_at": trial_ends_at.isoformat(),
+            "notes_key_enc": wrapped,
+            "notes_key_version": self.crypto.master_key_version,
+        }
+        result = self.client.table("users").insert(new_user).execute()
+        self._cache_user_key(user_id, data_key)
+        return User(**result.data[0])
+
+    async def update_subscription_from_iap(
+        self, user_id: UUID, update: "SubscriptionUpdate"
+    ) -> bool:
+        """Activate subscription from IAP purchase (Apple/Google)."""
+        from .iap_service import SubscriptionUpdate
+        now = datetime.utcnow()
+        expires_at = update.expires_at or now + timedelta(days=31 if update.billing_period == "monthly" else 365)
+
+        user_lookup = self.client.table("users").select("id, subscription_started_at").eq(
+            "id", str(user_id)
+        ).execute()
+        if not user_lookup.data:
+            return False
+
+        existing_started_at = user_lookup.data[0].get("subscription_started_at")
+        started_at = existing_started_at or now.isoformat()
+
+        result = self.client.table("users").update({
+            "subscription_plan": update.plan,
+            "subscription_billing_period": update.billing_period,
+            "subscription_is_recurring": update.is_recurring,
+            "subscription_is_canceled": False,
+            "subscription_canceled_at": None,
+            "subscription_started_at": started_at,
+            "subscription_expires_at": expires_at.isoformat(),
+        }).eq("id", str(user_id)).execute()
+
+        if len(result.data) == 0:
+            return False
+
+        # Record IAP purchase
+        try:
+            self.client.table("iap_purchases").insert({
+                "user_id": str(user_id),
+                "platform": "apple" if update.transaction_id and not update.purchase_token else "google",
+                "product_id": f"fixnote.{update.plan}.{update.billing_period}",
+                "transaction_id": update.transaction_id,
+                "purchase_token": update.purchase_token,
+                "plan": update.plan,
+                "billing_period": update.billing_period,
+                "expires_at": expires_at.isoformat(),
+                "verified_at": now.isoformat(),
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to record IAP purchase: {e}")
+
+        return True
     
     # Note operations
     async def create_note(

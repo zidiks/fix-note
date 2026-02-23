@@ -27,3 +27,7 @@ cryptography==42.0.5; platform_system != "Windows"
 
 # Background tasks
 apscheduler==3.10.4
+
+# Native app auth & IAP
+PyJWT>=2.8.0
+google-auth>=2.23.0

@@ -11,8 +11,13 @@ BillingPeriod = Literal["monthly", "yearly"]
 class User(BaseModel):
     """User model."""
     id: UUID
-    telegram_id: int
+    telegram_id: Optional[int] = None
     username: Optional[str] = None
+    apple_id: Optional[str] = None
+    google_id: Optional[str] = None
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    auth_provider: str = "telegram"
     first_name: Optional[str] = None
     language_code: str = "ru"
     subscription_plan: SubscriptionPlan = "trial"

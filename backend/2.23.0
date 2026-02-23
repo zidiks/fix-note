@@ -1,0 +1,9 @@
+Defaulting to user installation because normal site-packages is not writeable
+Requirement already satisfied: PyJWT in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (2.11.0)
+Requirement already satisfied: google-auth in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (2.48.0)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (from google-auth) (0.4.2)
+Requirement already satisfied: cryptography>=38.0.3 in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (from google-auth) (46.0.5)
+Requirement already satisfied: rsa<5,>=3.1.4 in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (from google-auth) (4.9.1)
+Requirement already satisfied: cffi>=2.0.0 in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (from cryptography>=38.0.3->google-auth) (2.0.0)
+Requirement already satisfied: pyasn1<0.7.0,>=0.6.1 in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (from pyasn1-modules>=0.2.1->google-auth) (0.6.2)
+Requirement already satisfied: pycparser in c:\users\рупминска€фармаци€\appdata\roaming\python\python312\site-packages (from cffi>=2.0.0->cryptography>=38.0.3->google-auth) (3.0)

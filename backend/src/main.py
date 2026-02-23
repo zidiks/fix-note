@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .api import router as api_router, set_bot_instance
+from .auth_native import router as auth_native_router
 from .bot import start_bot, stop_bot, dp, bot
 from .scheduler import start_scheduler, stop_scheduler
 
@@ -73,7 +74,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API router
+# Include API routers
+app.include_router(auth_native_router)
 app.include_router(api_router)
 
 

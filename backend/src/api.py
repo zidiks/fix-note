@@ -6,7 +6,8 @@ from typing import Optional, List
 from uuid import UUID
 import uuid
 
-from fastapi import APIRouter, HTTPException, Depends, Header, Query, BackgroundTasks
+import jwt as pyjwt
+from fastapi import APIRouter, HTTPException, Depends, Header, Query, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
@@ -148,36 +149,55 @@ def validate_telegram_init_data(init_data: str) -> Optional[dict]:
 
 
 async def get_current_user(
-    x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data")
+    x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
     """
-    Dependency to get current user from Telegram init data.
+    Dual-path authentication dependency.
+    - Path 1: Telegram WebApp initData (existing Mini App) via X-Telegram-Init-Data header
+    - Path 2: JWT Bearer token (native app) via Authorization: Bearer <token> header
     """
-    if not x_telegram_init_data:
-        raise HTTPException(status_code=401, detail="Missing Telegram init data")
-    
-    user_data = validate_telegram_init_data(x_telegram_init_data)
-    if not user_data:
-        raise HTTPException(status_code=401, detail="Invalid Telegram init data")
-    
-    telegram_id = user_data.get("id")
-    if not telegram_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-    
-    # Check if user is allowed
-    allowed_ids = settings.allowed_user_ids_list
-    if allowed_ids and telegram_id not in allowed_ids:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    # Get or create user
-    user = await notes_service.get_or_create_user(
-        telegram_id=telegram_id,
-        username=user_data.get("username"),
-        first_name=user_data.get("first_name"),
-        language_code=user_data.get("language_code", "ru")
-    )
-    
-    return user
+    # Path 1: Legacy Telegram WebApp (Mini App) - keep working unchanged
+    if x_telegram_init_data:
+        user_data = validate_telegram_init_data(x_telegram_init_data)
+        if not user_data:
+            raise HTTPException(status_code=401, detail="Invalid Telegram init data")
+
+        telegram_id = user_data.get("id")
+        if not telegram_id:
+            raise HTTPException(status_code=401, detail="Missing user ID")
+
+        allowed_ids = settings.allowed_user_ids_list
+        if allowed_ids and telegram_id not in allowed_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        return await notes_service.get_or_create_user(
+            telegram_id=telegram_id,
+            username=user_data.get("username"),
+            first_name=user_data.get("first_name"),
+            language_code=user_data.get("language_code", "ru"),
+        )
+
+    # Path 2: JWT Bearer token (native app)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        if not settings.jwt_secret:
+            raise HTTPException(status_code=500, detail="JWT not configured")
+        try:
+            payload = pyjwt.decode(
+                token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+            )
+            user_id = UUID(payload["sub"])
+            user = await notes_service.get_user_by_id(user_id)
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found")
+            return user
+        except pyjwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expired")
+        except (pyjwt.InvalidTokenError, KeyError, ValueError):
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 # Response models
@@ -594,6 +614,140 @@ async def cancel_monthly_subscription(user=Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Failed to cancel subscription: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to cancel subscription: {str(e)}")
+
+
+# ──────────────────────────────────────────────
+# Native IAP verification endpoints
+# ──────────────────────────────────────────────
+
+class AppleIAPRequest(BaseModel):
+    receipt_data: str
+    product_id: str
+    transaction_id: str
+
+
+class GooglePlayRequest(BaseModel):
+    purchase_token: str
+    product_id: str
+    order_id: str
+
+
+class IAPVerifyResponse(BaseModel):
+    success: bool
+    plan: str
+    billing_period: str
+    subscription_expires_at: Optional[str]
+
+
+@router.post("/subscription/apple-iap", response_model=IAPVerifyResponse)
+async def verify_apple_iap(
+    request: AppleIAPRequest,
+    user=Depends(get_current_user),
+):
+    """Verify Apple App Store IAP receipt and activate subscription."""
+    from .services.iap_service import IAPService
+    iap_service = IAPService()
+    try:
+        update = await iap_service.verify_apple_receipt(
+            receipt_data=request.receipt_data,
+            product_id=request.product_id,
+            transaction_id=request.transaction_id,
+        )
+        await notes_service.update_subscription_from_iap(user.id, update)
+        return IAPVerifyResponse(
+            success=True,
+            plan=update.plan,
+            billing_period=update.billing_period,
+            subscription_expires_at=update.expires_at.isoformat() if update.expires_at else None,
+        )
+    except Exception as e:
+        logger.error(f"Apple IAP verification failed: {e}")
+        raise HTTPException(status_code=400, detail=f"IAP verification failed: {e}")
+
+
+@router.post("/subscription/google-play", response_model=IAPVerifyResponse)
+async def verify_google_play(
+    request: GooglePlayRequest,
+    user=Depends(get_current_user),
+):
+    """Verify Google Play Billing purchase token and activate subscription."""
+    from .services.iap_service import IAPService
+    iap_service = IAPService()
+    try:
+        update = await iap_service.verify_google_purchase(
+            purchase_token=request.purchase_token,
+            product_id=request.product_id,
+            order_id=request.order_id,
+        )
+        await notes_service.update_subscription_from_iap(user.id, update)
+        return IAPVerifyResponse(
+            success=True,
+            plan=update.plan,
+            billing_period=update.billing_period,
+            subscription_expires_at=update.expires_at.isoformat() if update.expires_at else None,
+        )
+    except Exception as e:
+        logger.error(f"Google Play verification failed: {e}")
+        raise HTTPException(status_code=400, detail=f"IAP verification failed: {e}")
+
+
+# ──────────────────────────────────────────────
+# Voice note upload endpoint (for native app)
+# ──────────────────────────────────────────────
+
+@router.post("/notes/voice", response_model=Note)
+async def create_voice_note(
+    audio_file: UploadFile = File(...),
+    language: str = Form(default="ru"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    user=Depends(get_current_user),
+):
+    """
+    Upload audio file, transcribe it, and create a voice note.
+    Used by the native app for in-app voice recording.
+    """
+    from .services.transcription import TranscriptionService
+    from .services.summarizer import SummarizerService
+    from .db.models import NoteCreate as NoteCreateModel
+
+    # Check voice feature access
+    subscription = await notes_service.get_subscription_info(user.id)
+    if subscription.plan == "free":
+        raise HTTPException(status_code=403, detail="Voice notes require Pro or Ultra plan")
+
+    # Read audio bytes
+    audio_bytes = await audio_file.read()
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=422, detail="Empty audio file")
+
+    # Transcribe
+    transcription_service = TranscriptionService()
+    text = await transcription_service.transcribe_bytes(
+        audio_bytes,
+        filename=audio_file.filename or "audio.m4a",
+        language=language,
+    )
+    if not text or not text.strip():
+        raise HTTPException(status_code=422, detail="Transcription returned empty result")
+
+    # Summarize
+    summarizer = SummarizerService()
+    title, summary = await summarizer.summarize(text, language=language)
+
+    # Create note
+    note_data = NoteCreateModel(
+        content=text,
+        title=title,
+        summary=summary,
+        source="voice",
+    )
+    note = await notes_service.create_note(user.id, note_data, language)
+
+    # Track usage + auto-sync
+    await rag_service.index_note(str(note.id), str(user.id), note.content)
+    background_tasks.add_task(trigger_auto_sync_for_note, str(user.id), str(note.id))
+
+    return note
 
 
 @router.put("/user/language")
