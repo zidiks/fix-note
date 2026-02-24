@@ -26,6 +26,7 @@ export interface Note {
   title: string | null
   summary: string | null
   source: 'voice' | 'text' | 'photo'
+  tag: string
   duration_seconds: number | null
   images: string[] | null
   voice_url: string | null
@@ -38,6 +39,7 @@ export interface NoteCreate {
   title?: string
   summary?: string
   source?: 'voice' | 'text'
+  tag?: string
   duration_seconds?: number
 }
 
@@ -45,6 +47,7 @@ export interface NoteUpdate {
   content?: string
   title?: string
   summary?: string
+  tag?: string
 }
 
 export interface SearchResult {
@@ -61,6 +64,7 @@ export interface FTSSearchResult {
   title: string | null
   summary: string | null
   source: 'voice' | 'text' | 'photo'
+  tag: string
   duration_seconds: number | null
   images: string[] | null
   voice_url: string | null
@@ -81,6 +85,7 @@ export interface SharedNoteResponse {
     title: string | null
     summary: string | null
     source: 'voice' | 'text' | 'photo'
+    tag: string
     duration_seconds: number | null
     images: string[] | null
     voice_url: string | null
@@ -256,6 +261,14 @@ export interface SyncHistoryResponse {
   total: number
 }
 
+export interface TagsListResponse {
+  tags: string[]
+}
+
+export interface TagCreateResponse {
+  tag: string
+}
+
 // API Error class
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -321,6 +334,17 @@ export const api = {
   async deleteNote(id: string): Promise<{ success: boolean }> {
     return fetchWithAuth(`/notes/${id}`, {
       method: 'DELETE',
+    })
+  },
+
+  async getTags(): Promise<TagsListResponse> {
+    return fetchWithAuth('/tags')
+  },
+
+  async createTag(name: string): Promise<TagCreateResponse> {
+    return fetchWithAuth('/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
     })
   },
   

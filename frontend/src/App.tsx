@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, type PointerEvent } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTelegram } from './hooks/useTelegram'
 import { useTelegramTheme } from './hooks/useTelegramTheme'
 import { NotesList } from './components/NotesList'
@@ -36,6 +36,7 @@ function App() {
   } = useTelegram()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedTag, setSelectedTag] = useState('All')
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [viewState, setViewState] = useState<ViewState>('list')
   const [shareToken, setShareToken] = useState<string | null>(null)
@@ -44,6 +45,7 @@ function App() {
   const { deleteNote, refetchNotes } = useNotes()
   const { t, setLanguage } = useI18n()
   const { subscription, fetchSubscription } = useSubscription()
+  const queryClient = useQueryClient()
   const listRef = useRef<HTMLDivElement | null>(null)
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null)
   const entryPaywallShownRef = useRef(false)
@@ -67,6 +69,21 @@ function App() {
     queryKey: ['shared', shareToken],
     queryFn: () => api.getSharedNote(shareToken!),
     enabled: !!shareToken,
+  })
+
+  const { data: tagsData } = useQuery({
+    queryKey: ['tags'],
+    queryFn: () => api.getTags(),
+    enabled: viewState !== 'shared',
+  })
+  const tags = tagsData?.tags || ['All']
+
+  const createTagMutation = useMutation({
+    mutationFn: (name: string) => api.createTag(name),
+    onSuccess: ({ tag }) => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      setSelectedTag(tag)
+    },
   })
 
   // Initialize app
@@ -189,6 +206,15 @@ function App() {
 
   const closeEntryPaywall = () => {
     setIsEntryPaywallOpen(false)
+  }
+
+  const handleAddTag = () => {
+    hapticImpact('light')
+    const raw = window.prompt(t('addTagPrompt'))
+    if (!raw) return
+    const name = raw.trim()
+    if (!name) return
+    createTagMutation.mutate(name)
   }
   
   const handlePaywallUpgrade = () => {
@@ -482,7 +508,14 @@ function App() {
   const handleUpdateNote = (updatedNote: Note) => {
     setSelectedNote(updatedNote)
     refetchNotes()
+    queryClient.invalidateQueries({ queryKey: ['tags'] })
   }
+
+  useEffect(() => {
+    if (!tags.includes(selectedTag)) {
+      setSelectedTag('All')
+    }
+  }, [selectedTag, tags])
 
   const handleAddNote = async () => {
     hapticImpact('medium')
@@ -557,6 +590,7 @@ function App() {
           <NoteDetail
             key="detail"
             note={selectedNote}
+            tags={tags}
             onBack={handleBackToList}
             onDelete={handleDeleteNote}
             onUpdate={handleUpdateNote}
@@ -571,12 +605,42 @@ function App() {
               className="fixed top-0 left-0 right-0 z-40 safe-area-top"
             >
               <div className="px-4 py-3 flex items-center justify-between">
-                <h1
-                  className="text-[22px] font-bold"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  {t('notes')}
-                </h1>
+                <div className="flex-1 min-w-0 mr-3">
+                  <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar py-1">
+                    <button
+                      className="h-9 w-9 rounded-full flex items-center justify-center text-lg font-medium flex-shrink-0 border"
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        color: '#1F2937',
+                        borderColor: 'rgba(31, 41, 55, 0.15)',
+                      }}
+                      onClick={handleAddTag}
+                      disabled={createTagMutation.isPending}
+                    >
+                      +
+                    </button>
+                    {tags.map((tag) => {
+                      const isActive = selectedTag === tag
+                      return (
+                        <button
+                          key={tag}
+                          className="h-9 px-4 rounded-full text-sm font-medium whitespace-nowrap flex-shrink-0 border transition-colors"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            color: isActive ? '#111827' : '#374151',
+                            borderColor: isActive ? '#111827' : 'rgba(31, 41, 55, 0.12)',
+                          }}
+                          onClick={() => {
+                            hapticImpact('light')
+                            setSelectedTag(tag)
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
 
                 {/* Profile avatar in header */}
                 <button
@@ -641,6 +705,7 @@ function App() {
                 >
                   <NotesList
                     searchQuery={searchQuery}
+                    selectedTag={selectedTag}
                     onSelectNote={handleSelectNote}
                   />
                 </div>

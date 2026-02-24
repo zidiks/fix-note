@@ -66,6 +66,10 @@ const translationsRu = {
   searchNoResults: 'Ничего не найдено',
   searchNoResultsDesc: 'Попробуйте изменить поисковый запрос',
   results: 'Результаты',
+  tag: 'Тег',
+  selectTag: 'Выберите тег',
+  addTag: 'Добавить тег',
+  addTagPrompt: 'Введите название тега',
   
   // Date groups
   today: 'Сегодня',
@@ -246,6 +250,10 @@ const translationsEn: typeof translationsRu = {
   searchNoResults: 'Nothing found',
   searchNoResultsDesc: 'Try changing your search query',
   results: 'Results',
+  tag: 'Tag',
+  selectTag: 'Select tag',
+  addTag: 'Add tag',
+  addTagPrompt: 'Enter tag name',
   
   // Date groups
   today: 'Today',

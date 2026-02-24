@@ -10,219 +10,126 @@ interface ProfilePageProps {
   onSyncClick: () => void
 }
 
+const ArrowRight = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+)
+
+const IconPlan = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2 7.5 14 3 9.6l6.2-.9L12 3z" />
+  </svg>
+)
+
+const IconSync = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 3v6h-6" />
+    <path d="M3 21v-6h6" />
+    <path d="M20 9a8 8 0 0 0-14-3" />
+    <path d="M4 15a8 8 0 0 0 14 3" />
+  </svg>
+)
+
+const IconLang = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18" />
+    <path d="M12 3a15 15 0 0 1 0 18" />
+    <path d="M12 3a15 15 0 0 0 0 18" />
+  </svg>
+)
+
 export const ProfilePage = ({ onBack: _onBack, onLanguageClick, onSubscriptionClick, onSyncClick }: ProfilePageProps) => {
-  // onBack is handled by Telegram BackButton, kept for future use
   void _onBack
   const { t, language } = useI18n()
   const { user, hapticImpact } = useTelegram()
   const { subscription, getTrialDaysLeft } = useSubscription()
-  
+
   const plan = subscription?.plan || 'trial'
   const planDetails = PLAN_DETAILS[plan]
   const trialDays = getTrialDaysLeft()
-  
-  // Get user initials
+
   const getInitials = () => {
     if (!user) return '?'
     const first = user.first_name?.[0] || ''
     const last = user.last_name?.[0] || ''
     return (first + last).toUpperCase() || '?'
   }
-  
-  const handleMenuClick = (action: () => void) => {
-    hapticImpact('light')
-    action()
-  }
-  
+
+  const menu = [
+    { key: 'subscription', label: t('subscription'), right: planDetails.name, icon: <IconPlan />, onClick: onSubscriptionClick },
+    { key: 'sync', label: t('syncSettings'), right: null, icon: <IconSync />, onClick: onSyncClick },
+    { key: 'language', label: t('language'), right: language === 'ru' ? 'RU' : 'EN', icon: <IconLang />, onClick: onLanguageClick },
+  ]
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50 }}
+      initial={{ opacity: 0, x: 24 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 50 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="min-h-screen bg-[var(--bg-primary)]"
+      exit={{ opacity: 0, x: 24 }}
+      transition={{ duration: 0.2 }}
+      className="min-h-screen pb-8"
+      style={{ backgroundColor: 'var(--bg-primary)' }}
     >
-      {/* Header */}
-      <div className="px-4 pt-4 pb-6">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-          {t('myProfile')}
-        </h1>
+      <div className="px-4 pt-4 pb-4">
+        <h1 className="text-2xl font-semibold text-[var(--text-primary)]">{t('myProfile')}</h1>
       </div>
-      
-      {/* Profile Card */}
-      <div className="px-4 mb-6">
-        <div className="rounded-2xl p-5 bg-[var(--bg-secondary)]">
-          <div className="flex items-center gap-4">
-            {/* Avatar */}
-            <div 
-              className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden"
-              style={{ background: planDetails.gradient }}
-            >
-              {user?.photo_url ? (
-                <img 
-                  src={user.photo_url} 
-                  alt="Avatar" 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-2xl font-bold text-white">
-                  {getInitials()}
-                </span>
-              )}
-            </div>
-            
-            {/* User Info */}
-            <div className="flex-1">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-                {user?.first_name} {user?.last_name || ''}
-              </h2>
-              {user?.username && (
-                <p className="text-sm text-[var(--text-secondary)]">
-                  @{user.username}
-                </p>
-              )}
-              
-              {/* Plan Badge */}
-              <div className="mt-2 flex items-center gap-2">
-                <span 
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
-                  style={{ background: planDetails.gradient }}
-                >
-                  <span>{planDetails.icon}</span>
-                  <span>{planDetails.name}</span>
-                </span>
-                
-                {plan === 'trial' && trialDays > 0 && (
-                  <span className="text-xs text-[var(--warning)]">
-                    {t('trialDaysLeft', { days: trialDays })}
-                  </span>
-                )}
+
+      <div className="px-4 mb-4">
+        <div className="rounded-2xl border p-4 flex items-center gap-4" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--separator)' }}>
+          <div className="w-14 h-14 rounded-full overflow-hidden border" style={{ borderColor: 'var(--separator)' }}>
+            {user?.photo_url ? (
+              <img src={user.photo_url} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-sm font-semibold" style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}>
+                {getInitials()}
               </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-medium truncate text-[var(--text-primary)]">
+              {[user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'FixNote'}
+            </div>
+            {user?.username && <div className="text-sm text-[var(--text-secondary)]">@{user.username}</div>}
+            <div className="mt-1 text-sm text-[var(--text-secondary)]">
+              {planDetails.name}
+              {plan === 'trial' && trialDays > 0 ? ` � ${t('trialDaysLeft', { days: trialDays })}` : ''}
             </div>
           </div>
         </div>
       </div>
-      
-      {/* Menu Items */}
+
       <div className="px-4">
-        <div className="rounded-2xl overflow-hidden bg-[var(--bg-secondary)]">
-          {/* Subscription */}
-          <button
-            className="w-full px-4 py-3.5 flex items-center justify-between active:opacity-70 transition-opacity"
-            onClick={() => handleMenuClick(onSubscriptionClick)}
-          >
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #AF52DE 0%, #FF2D55 100%)' }}
+        <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--separator)' }}>
+          {menu.map((item, index) => (
+            <div key={item.key}>
+              <button
+                className="w-full h-14 px-4 flex items-center gap-3 active:opacity-70"
+                onClick={() => {
+                  hapticImpact('light')
+                  item.onClick()
+                }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-                </svg>
-              </div>
-              <span className="text-[var(--text-primary)]">{t('subscription')}</span>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-primary)' }}>
+                  {item.icon}
+                </div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">{item.label}</div>
+                <div className="ml-auto flex items-center gap-2 text-[var(--text-secondary)]">
+                  {item.right && <span className="text-sm">{item.right}</span>}
+                  <ArrowRight />
+                </div>
+              </button>
+              {index < menu.length - 1 && <div className="mx-4 h-px" style={{ backgroundColor: 'var(--separator)' }} />}
             </div>
-            <div className="flex items-center gap-2">
-              <span 
-                className="text-sm font-medium"
-                style={{ color: planDetails.color }}
-              >
-                {planDetails.name}
-              </span>
-              <svg 
-                width="8" 
-                height="14" 
-                viewBox="0 0 8 14" 
-                fill="none"
-                className="text-[var(--text-tertiary)]"
-              >
-                <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </button>
-          
-          {/* Separator */}
-          <div className="ml-[52px] h-[0.5px] bg-[var(--separator)]" />
-          
-          {/* Sync Settings */}
-          <button
-            className="w-full px-4 py-3.5 flex items-center justify-between active:opacity-70 transition-opacity"
-            onClick={() => handleMenuClick(onSyncClick)}
-          >
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #34C759 0%, #30D158 100%)' }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                  <path d="M23 4V10H17"/>
-                  <path d="M1 20V14H7"/>
-                  <path d="M3.51 9A9 9 0 0 1 20.49 9L23 11.5"/>
-                  <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
-                </svg>
-              </div>
-              <span className="text-[var(--text-primary)]">{t('syncSettings')}</span>
-            </div>
-            <svg 
-              width="8" 
-              height="14" 
-              viewBox="0 0 8 14" 
-              fill="none"
-              className="text-[var(--text-tertiary)]"
-            >
-              <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          
-          {/* Separator */}
-          <div className="ml-[52px] h-[0.5px] bg-[var(--separator)]" />
-          
-          {/* Language */}
-          <button
-            className="w-full px-4 py-3.5 flex items-center justify-between active:opacity-70 transition-opacity"
-            onClick={() => handleMenuClick(onLanguageClick)}
-          >
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)' }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M2 12H22"/>
-                  <path d="M12 2C14.5 4.5 16 8 16 12C16 16 14.5 19.5 12 22C9.5 19.5 8 16 8 12C8 8 9.5 4.5 12 2Z"/>
-                </svg>
-              </div>
-              <span className="text-[var(--text-primary)]">{t('language')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-[var(--text-secondary)]">
-                {language === 'ru' ? '🇷🇺 Русский' : '🇬🇧 English'}
-              </span>
-              <svg 
-                width="8" 
-                height="14" 
-                viewBox="0 0 8 14" 
-                fill="none"
-                className="text-[var(--text-tertiary)]"
-              >
-                <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </button>
+          ))}
         </div>
       </div>
-      
-      {/* Info Section */}
-      <div className="px-4 mt-6">
-        <p className="text-center text-sm text-[var(--text-tertiary)]">
-          {t('allNotesSync')}
-        </p>
-        <p className="text-center text-xs mt-2 text-[var(--text-tertiary)]">
-          {t('version')} 1.0.0
-        </p>
+
+      <div className="px-4 mt-6 text-xs text-center text-[var(--text-tertiary)]">
+        <div>{t('allNotesSync')}</div>
+        <div className="mt-1">{t('version')} 1.0.0</div>
       </div>
     </motion.div>
   )
 }
-

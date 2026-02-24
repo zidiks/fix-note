@@ -17,6 +17,7 @@ from .db.models import (
     Note, NoteCreate, NoteUpdate, SearchQuery, SearchResult, StatsResponse, 
     PublicNote, FTSSearchResult, ShareResponse, SubscriptionInfo, SubscriptionLimits,
     UsageStats, InvoiceRequest, InvoiceResponse, CancelSubscriptionResponse, LanguageUpdate,
+    TagCreateRequest, TagCreateResponse, TagsListResponse,
     # Sync models
     IntegrationConnectionPublic, NoteSyncStatus, SyncHistoryEntry,
     NotionOAuthStartResponse, NotionOAuthCallbackRequest, NotionOAuthCallbackResponse,
@@ -256,6 +257,26 @@ async def get_note(
     return note
 
 
+@router.get("/tags", response_model=TagsListResponse)
+async def get_tags(user=Depends(get_current_user)):
+    """Get all available note tags for current user."""
+    tags = await notes_service.get_tags(user.id)
+    return TagsListResponse(tags=tags)
+
+
+@router.post("/tags", response_model=TagCreateResponse)
+async def create_tag(
+    request: TagCreateRequest,
+    user=Depends(get_current_user),
+):
+    """Create a custom tag."""
+    try:
+        tag = await notes_service.create_tag(user.id, request.name)
+        return TagCreateResponse(tag=tag)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/notes", response_model=Note)
 async def create_note(
     note_data: NoteCreate,
@@ -455,6 +476,7 @@ async def get_shared_note(
         title=note.title,
         summary=note.summary,
         source=note.source,
+        tag=getattr(note, "tag", "All"),
         duration_seconds=note.duration_seconds,
         images=getattr(note, "images", []) or [],
         voice_url=getattr(note, "voice_url", None),

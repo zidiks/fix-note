@@ -50,6 +50,7 @@ class Note(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"  # 'voice' | 'text' | 'photo'
+    tag: str = "All"
     duration_seconds: Optional[int] = None
     images: List[str] = []  # Array of image URLs
     voice_url: Optional[str] = None  # URL of voice file for voice notes
@@ -66,6 +67,7 @@ class PublicNote(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"
+    tag: str = "All"
     duration_seconds: Optional[int] = None
     images: List[str] = []
     voice_url: Optional[str] = None
@@ -78,6 +80,7 @@ class NoteCreate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"
+    tag: Optional[str] = None
     duration_seconds: Optional[int] = None
     images: List[str] = []
     voice_url: Optional[str] = None
@@ -88,6 +91,7 @@ class NoteUpdate(BaseModel):
     content: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
+    tag: Optional[str] = None
 
 
 class SearchQuery(BaseModel):
@@ -112,6 +116,7 @@ class FTSSearchResult(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     source: str = "text"
+    tag: str = "All"
     duration_seconds: Optional[int] = None
     images: List[str] = []
     voice_url: Optional[str] = None
@@ -200,6 +205,21 @@ class CancelSubscriptionResponse(BaseModel):
 class LanguageUpdate(BaseModel):
     """Language update request."""
     language: str
+
+
+class TagCreateRequest(BaseModel):
+    """Request to create a custom tag."""
+    name: str
+
+
+class TagCreateResponse(BaseModel):
+    """Created tag payload."""
+    tag: str
+
+
+class TagsListResponse(BaseModel):
+    """List of available tags for current user."""
+    tags: List[str]
 
 
 # ==================== Sync Models ====================

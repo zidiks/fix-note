@@ -9,21 +9,25 @@ interface SyncSettingsPageProps {
   onBack?: () => void
 }
 
-// Sync mode options with labels
-const SYNC_MODES: { value: SyncMode; labelKey: string; icon: string }[] = [
-  { value: 'two_way', labelKey: 'syncModeTwoWay', icon: '↔️' },
-  { value: 'app_to_external', labelKey: 'syncModeAppToNotion', icon: '➡️' },
-  { value: 'external_to_app', labelKey: 'syncModeNotionToApp', icon: '⬅️' },
+const SYNC_MODES: { value: SyncMode; labelKey: string }[] = [
+  { value: 'two_way', labelKey: 'syncModeTwoWay' },
+  { value: 'app_to_external', labelKey: 'syncModeAppToNotion' },
+  { value: 'external_to_app', labelKey: 'syncModeNotionToApp' },
 ]
 
+const ArrowRight = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+)
+
 export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => {
-  void _onBack // handled by Telegram BackButton
-  
+  void _onBack
+
   const { t } = useI18n()
   const { hapticImpact, hapticNotification, showAlert, openLink } = useTelegram()
   const { subscription } = useSubscription()
-  
-  // State
+
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([])
   const [availableProviders, setAvailableProviders] = useState<AvailableProvider[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -34,26 +38,21 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
   const [showSyncModeModal, setShowSyncModeModal] = useState(false)
   const [isSyncingAll, setIsSyncingAll] = useState(false)
   const [syncAllResult, setSyncAllResult] = useState<{ synced: number; failed: number } | null>(null)
-  
-  // Permission checks
+
   const canSync = subscription?.limits.sync_enabled ?? false
   const canAutoSync = subscription?.limits.auto_sync ?? false
   const plan = subscription?.plan ?? 'free'
-  
-  // Load integrations
+
   const loadIntegrations = useCallback(async () => {
     try {
       setIsLoading(true)
       const data = await api.getIntegrations()
       setIntegrations(data.integrations)
       setAvailableProviders(data.available_providers)
-      
-      // Check if any integration needs database selection
+
       const notionIntegration = data.integrations.find(i => i.provider === 'notion' && i.is_active)
       if (notionIntegration && !notionIntegration.database_id && !showDatabasePicker) {
-        // Connected but no database selected - fetch available databases
         setSelectedIntegration(notionIntegration)
-        // Try to get databases from available_providers
         const notionProvider = data.available_providers.find(p => p.provider === 'notion')
         if (notionProvider?.databases) {
           setAvailableDatabases(notionProvider.databases)
@@ -66,27 +65,21 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       setIsLoading(false)
     }
   }, [showDatabasePicker])
-  
+
   useEffect(() => {
     loadIntegrations()
   }, [loadIntegrations])
-  
-  // Handle OAuth callback - defined first so other hooks can use it
+
   const handleNotionCallback = useCallback(async (code: string, state: string) => {
     setIsConnecting(true)
-    
     try {
       const result = await api.completeNotionOAuth(code, state)
-      
       if (result.success) {
         hapticNotification('success')
-        
         if (!result.has_database && result.available_databases) {
-          // Show database picker
           setAvailableDatabases(result.available_databases)
           setShowDatabasePicker(true)
         }
-        
         await loadIntegrations()
       } else {
         showAlert(t('connectionFailed'))
@@ -98,24 +91,16 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       setIsConnecting(false)
     }
   }, [hapticNotification, showAlert, t, loadIntegrations])
-  
-  // Ref to prevent multiple parallel OAuth completions
+
   const isProcessingOAuthRef = useRef(false)
-  
-  // Check for pending OAuth when page loads or regains focus
+
   const checkPendingOAuth = useCallback(async () => {
-    // Prevent multiple parallel calls
-    if (isProcessingOAuthRef.current || isConnecting) {
-      return
-    }
-    
+    if (isProcessingOAuthRef.current || isConnecting) return
     try {
       isProcessingOAuthRef.current = true
       const result = await api.checkPendingNotionOAuth()
       if (result.pending && result.code) {
-        // Found pending OAuth code - complete the flow
         await handleNotionCallback(result.code, '')
-        // Clear the pending code
         await api.clearPendingNotionOAuth()
       }
     } catch (error) {
@@ -124,77 +109,62 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       isProcessingOAuthRef.current = false
     }
   }, [handleNotionCallback, isConnecting])
-  
-  // Handle OAuth callback from URL, localStorage, or pending in DB
+
   useEffect(() => {
-    // First check URL params (direct redirect)
     const params = new URLSearchParams(window.location.search)
     let code = params.get('code')
     let state = params.get('state')
-    
-    // If not in URL, check localStorage (from OAuth redirect page)
+
     if (!code) {
       try {
         code = localStorage.getItem('notion_oauth_code')
         state = localStorage.getItem('notion_oauth_state') || ''
-        
-        // Clear stored values
         if (code) {
           localStorage.removeItem('notion_oauth_code')
           localStorage.removeItem('notion_oauth_state')
         }
-      } catch (e) {
-        // localStorage not available
+      } catch {
+        // noop
       }
     }
-    
+
     if (code) {
       handleNotionCallback(code, state || '')
-      // Clean up URL if it was in params
       if (params.get('code')) {
         window.history.replaceState({}, '', window.location.pathname)
       }
     } else {
-      // No code in URL or localStorage - check database for pending OAuth
       checkPendingOAuth()
     }
   }, [checkPendingOAuth, handleNotionCallback])
-  
-  // Also check when page regains focus (user returns from external browser)
+
   useEffect(() => {
     const handleFocus = () => {
       checkPendingOAuth()
     }
-    
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkPendingOAuth()
       }
     }
-    
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    
     return () => {
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [checkPendingOAuth])
-  
-  // Connect to Notion
+
   const handleConnectNotion = async () => {
     if (!canSync) {
       hapticNotification('error')
       showAlert(t('upgradeForSync'))
       return
     }
-    
     hapticImpact('light')
     setIsConnecting(true)
-    
     try {
       const { authorization_url } = await api.startNotionOAuth()
-      // Open in system browser or new tab
       openLink(authorization_url)
     } catch (error) {
       console.error('Failed to start OAuth:', error)
@@ -203,11 +173,9 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       setIsConnecting(false)
     }
   }
-  
-  // Select Notion database
+
   const handleSelectDatabase = async (database: NotionDatabase) => {
     hapticImpact('light')
-    
     try {
       await api.setNotionDatabase(database.id)
       setShowDatabasePicker(false)
@@ -218,13 +186,10 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       showAlert(t('operationFailed'))
     }
   }
-  
-  // Update sync mode
+
   const handleSyncModeChange = async (mode: SyncMode) => {
     if (!selectedIntegration) return
-    
     hapticImpact('light')
-    
     try {
       await api.updateSyncSettings(selectedIntegration.provider, { sync_mode: mode })
       setShowSyncModeModal(false)
@@ -234,17 +199,14 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       showAlert(t('operationFailed'))
     }
   }
-  
-  // Toggle auto-sync
+
   const handleAutoSyncToggle = async (integration: IntegrationConnection) => {
     if (!canAutoSync) {
       hapticNotification('error')
       showAlert(t('upgradeForAutoSync'))
       return
     }
-    
     hapticImpact('light')
-    
     try {
       await api.updateSyncSettings(integration.provider, {
         auto_sync_enabled: !integration.auto_sync_enabled,
@@ -255,12 +217,9 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       showAlert(t('operationFailed'))
     }
   }
-  
-  // Disconnect integration
+
   const handleDisconnect = async (integration: IntegrationConnection) => {
     hapticImpact('medium')
-    
-    // Telegram WebApp doesn't have confirm, use showConfirm or just proceed
     try {
       await api.disconnectIntegration(integration.provider)
       hapticNotification('success')
@@ -270,28 +229,21 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       showAlert(t('operationFailed'))
     }
   }
-  
-  // Sync all notes
+
   const handleSyncAll = async () => {
     if (isSyncingAll) return
-    
     hapticImpact('medium')
     setIsSyncingAll(true)
     setSyncAllResult(null)
-    
     try {
       const result = await api.syncAllNotes()
-      
       if (result.synced > 0 || result.failed === 0) {
         hapticNotification('success')
       } else {
         hapticNotification('error')
       }
-      
       setSyncAllResult({ synced: result.synced, failed: result.failed })
-      await loadIntegrations() // Refresh last sync time
-      
-      // Hide result after 5 seconds
+      await loadIntegrations()
       setTimeout(() => setSyncAllResult(null), 5000)
     } catch (error) {
       console.error('Failed to sync all notes:', error)
@@ -301,451 +253,239 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
       setIsSyncingAll(false)
     }
   }
-  
-  // Get connected integration for a provider
-  const getIntegration = (provider: string) => {
-    return integrations.find(i => i.provider === provider && i.is_active)
-  }
-  
-  // Format last sync time
+
+  const getIntegration = (provider: string) => integrations.find(i => i.provider === provider && i.is_active)
+
   const formatLastSync = (dateStr: string | null) => {
     if (!dateStr) return t('never')
-    
     const date = new Date(dateStr)
     const now = new Date()
     const diff = now.getTime() - date.getTime()
-    
     if (diff < 60000) return t('justNow')
     if (diff < 3600000) return t('minutesAgo', { count: Math.floor(diff / 60000) })
     if (diff < 86400000) return t('hoursAgo', { count: Math.floor(diff / 3600000) })
     return date.toLocaleDateString()
   }
-  
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50 }}
+      initial={{ opacity: 0, x: 24 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 50 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+      exit={{ opacity: 0, x: 24 }}
+      transition={{ duration: 0.2 }}
       className="min-h-screen pb-8"
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
-      {/* Header */}
-      <div className="px-4 pt-4 pb-2">
-        <h1 
-          className="text-2xl font-bold"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          {t('syncSettings')}
-        </h1>
-        <p 
-          className="text-sm mt-1"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          {t('syncDescription')}
-        </p>
+      <div className="px-4 pt-4 pb-3">
+        <h1 className="text-2xl font-semibold text-[var(--text-primary)]">{t('syncSettings')}</h1>
+        <p className="text-sm mt-1 text-[var(--text-secondary)]">{t('syncDescription')}</p>
       </div>
-      
-      {/* Subscription notice */}
+
       {!canSync && (
         <div className="px-4 mb-4">
-          <div 
-            className="rounded-xl p-4"
-            style={{ 
-              background: 'linear-gradient(135deg, rgba(255, 149, 0, 0.15) 0%, rgba(255, 107, 0, 0.15) 100%)',
-              border: '1px solid rgba(255, 149, 0, 0.3)'
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🔒</span>
-              <div>
-                <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                  {t('syncRequiresPro')}
-                </p>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {t('upgradeToUnlock')}
-                </p>
-              </div>
-            </div>
+          <div className="rounded-2xl border p-4" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--separator)' }}>
+            <p className="text-sm font-medium text-[var(--text-primary)]">{t('syncRequiresPro')}</p>
+            <p className="text-sm mt-1 text-[var(--text-secondary)]">{t('upgradeToUnlock')}</p>
           </div>
         </div>
       )}
-      
-      {/* Loading state */}
+
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div 
-            className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
-            style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
-          />
+          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--text-secondary)', borderTopColor: 'transparent' }} />
         </div>
       ) : (
-        <div className="px-4 space-y-4">
-          {/* Connected Integrations */}
-          {availableProviders.map(provider => {
+        <div className="px-4 space-y-3">
+          {availableProviders.map((provider) => {
             const integration = getIntegration(provider.provider)
             const isConnected = !!integration
-            
+            const providerLabel = provider.name?.slice(0, 1).toUpperCase() || '?'
+
             return (
               <div
                 key={provider.provider}
-                className="rounded-2xl overflow-hidden"
-                style={{ backgroundColor: 'var(--bg-secondary)' }}
+                className="rounded-2xl border overflow-hidden"
+                style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--separator)' }}
               >
-                {/* Provider header */}
                 <div className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                      style={{ 
-                        background: provider.provider === 'notion' 
-                          ? 'linear-gradient(135deg, #000000 0%, #2d2d2d 100%)'
-                          : provider.provider === 'obsidian'
-                          ? 'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)'
-                          : 'linear-gradient(135deg, #F97316 0%, #FB923C 100%)'
-                      }}
-                    >
-                      {provider.icon}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
+                      {providerLabel}
                     </div>
-                    <div>
-                      <h3 
-                        className="font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {provider.name}
-                      </h3>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-[var(--text-primary)]">{provider.name}</div>
                       {provider.coming_soon ? (
-                        <span 
-                          className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ 
-                            backgroundColor: 'rgba(139, 92, 246, 0.2)',
-                            color: '#A855F7'
-                          }}
-                        >
-                          {t('comingSoon')}
-                        </span>
+                        <div className="text-xs text-[var(--text-secondary)]">{t('comingSoon')}</div>
                       ) : isConnected ? (
-                        <p 
-                          className="text-sm"
-                          style={{ color: 'var(--text-secondary)' }}
-                        >
+                        <div className="text-xs text-[var(--text-secondary)] truncate">
                           {integration.workspace_name || integration.database_name || t('connected')}
-                        </p>
+                        </div>
                       ) : null}
                     </div>
                   </div>
-                  
-                  {/* Connect/Status button */}
+
                   {provider.available && !provider.coming_soon && (
                     isConnected ? (
-                      <div 
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full"
-                        style={{ backgroundColor: 'rgba(52, 199, 89, 0.15)' }}
-                      >
-                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                        <span className="text-sm text-green-500 font-medium">
-                          {t('connected')}
-                        </span>
-                      </div>
+                      <span className="text-xs px-2 py-1 rounded-full border text-[var(--text-secondary)]" style={{ borderColor: 'var(--separator)' }}>
+                        {t('connected')}
+                      </span>
                     ) : (
                       <button
                         onClick={handleConnectNotion}
                         disabled={isConnecting || !canSync}
-                        className="px-4 py-2 rounded-xl font-medium transition-all active:scale-95 disabled:opacity-50"
-                        style={{ 
-                          background: 'var(--accent)',
-                          color: 'white'
-                        }}
+                        className="h-9 px-4 rounded-xl text-sm border"
+                        style={{ borderColor: 'var(--separator)', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
                       >
                         {isConnecting ? t('connecting') : t('connect')}
                       </button>
                     )
                   )}
                 </div>
-                
-                {/* Integration settings (if connected) */}
+
                 {isConnected && integration && (
-                  <>
-                    <div 
-                      className="mx-4"
-                      style={{ height: '1px', backgroundColor: 'var(--separator)' }}
-                    />
-                    
-                    {/* Database info */}
+                  <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: 'var(--separator)' }}>
                     {integration.database_name && (
-                      <div className="px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span style={{ color: 'var(--text-secondary)' }}>📁</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{t('database')}</span>
-                        </div>
-                        <span 
-                          className="text-sm font-medium"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          {integration.database_name}
-                        </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-[var(--text-secondary)]">{t('database')}</span>
+                        <span className="text-sm text-[var(--text-primary)] truncate">{integration.database_name}</span>
                       </div>
                     )}
-                    
-                    {/* Sync mode selector */}
+
                     <button
                       onClick={() => {
                         hapticImpact('light')
                         setSelectedIntegration(integration)
                         setShowSyncModeModal(true)
                       }}
-                      className="w-full px-4 py-3 flex items-center justify-between active:opacity-70"
+                      className="w-full h-10 px-3 rounded-xl border flex items-center justify-between"
+                      style={{ borderColor: 'var(--separator)', backgroundColor: 'var(--bg-primary)' }}
                     >
-                      <div className="flex items-center gap-2">
-                        <span style={{ color: 'var(--text-secondary)' }}>🔄</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{t('syncMode')}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className="text-sm"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          {SYNC_MODES.find(m => m.value === integration.sync_mode)?.icon}{' '}
-                          {t((SYNC_MODES.find(m => m.value === integration.sync_mode)?.labelKey || 'syncModeTwoWay') as any)}
-                        </span>
-                        <svg 
-                          width="8" height="14" viewBox="0 0 8 14" 
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
-                      </div>
+                      <span className="text-sm text-[var(--text-secondary)]">{t('syncMode')}</span>
+                      <span className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                        {t((SYNC_MODES.find(m => m.value === integration.sync_mode)?.labelKey || 'syncModeTwoWay') as any)}
+                        <ArrowRight />
+                      </span>
                     </button>
-                    
-                    {/* Auto-sync toggle */}
-                    <div className="px-4 py-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span style={{ color: 'var(--text-secondary)' }}>⚡</span>
-                        <div>
-                          <span style={{ color: 'var(--text-secondary)' }}>{t('autoSync')}</span>
-                          {!canAutoSync && (
-                            <span 
-                              className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                              style={{ 
-                                backgroundColor: 'rgba(175, 82, 222, 0.2)',
-                                color: '#AF52DE'
-                              }}
-                            >
-                              Ultra
-                            </span>
-                          )}
-                        </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-[var(--text-secondary)]">
+                        {t('autoSync')}
+                        {!canAutoSync && <span className="ml-2 text-xs">Ultra</span>}
                       </div>
                       <button
                         onClick={() => handleAutoSyncToggle(integration)}
-                        className="relative w-[51px] h-[31px] rounded-full transition-colors duration-200"
-                        style={{ 
-                          backgroundColor: integration.auto_sync_enabled ? '#34C759' : 'rgba(120, 120, 128, 0.32)'
-                        }}
+                        className="relative w-12 h-7 rounded-full"
+                        style={{ backgroundColor: integration.auto_sync_enabled ? 'var(--text-primary)' : 'var(--separator)' }}
                       >
-                        <span 
-                          className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white transition-transform duration-200 shadow-sm"
-                          style={{
-                            transform: integration.auto_sync_enabled ? 'translateX(20px)' : 'translateX(0)'
-                          }}
+                        <span
+                          className="absolute top-1 w-5 h-5 rounded-full bg-white transition-transform"
+                          style={{ transform: integration.auto_sync_enabled ? 'translateX(24px)' : 'translateX(4px)' }}
                         />
                       </button>
                     </div>
-                    
-                    {/* Last sync info */}
-                    <div className="px-4 py-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span style={{ color: 'var(--text-secondary)' }}>🕐</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{t('lastSync')}</span>
-                      </div>
-                      <span 
-                        className="text-sm"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        {formatLastSync(integration.last_sync_at)}
-                      </span>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[var(--text-secondary)]">{t('lastSync')}</span>
+                      <span className="text-sm text-[var(--text-secondary)]">{formatLastSync(integration.last_sync_at)}</span>
                     </div>
-                    
-                    {/* Sync all button */}
+
                     {integration.database_id && (
-                      <div className="px-4 py-3">
+                      <div>
                         <button
                           onClick={handleSyncAll}
                           disabled={isSyncingAll}
-                          className="w-full py-2.5 rounded-xl font-medium transition-all active:scale-95 flex items-center justify-center gap-2"
-                          style={{ 
-                            backgroundColor: 'rgba(0, 122, 255, 0.1)',
-                            color: '#007AFF'
-                          }}
+                          className="w-full h-10 rounded-xl border text-sm"
+                          style={{ borderColor: 'var(--separator)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         >
-                          {isSyncingAll ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                              <span>{t('syncingAll')}</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                <path d="M23 4V10H17"/>
-                                <path d="M1 20V14H7"/>
-                                <path d="M3.51 9A9 9 0 0 1 20.49 9L23 11.5"/>
-                                <path d="M20.49 15A9 9 0 0 1 3.51 15L1 12.5"/>
-                              </svg>
-                              <span>{t('syncAllNotes')}</span>
-                            </>
-                          )}
+                          {isSyncingAll ? t('syncingAll') : t('syncAllNotes')}
                         </button>
-                        
-                        {/* Sync result */}
                         <AnimatePresence>
                           {syncAllResult && (
                             <motion.div
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="mt-2 text-center text-sm"
-                              style={{ color: syncAllResult.failed > 0 ? '#FF9500' : '#34C759' }}
+                              className="text-xs mt-2 text-[var(--text-secondary)]"
                             >
-                              {syncAllResult.synced > 0 && (
-                                <span>✓ {t('syncedCount', { count: syncAllResult.synced } as any)}</span>
-                              )}
-                              {syncAllResult.failed > 0 && (
-                                <span className="ml-2">⚠ {t('failedCount', { count: syncAllResult.failed } as any)}</span>
-                              )}
-                              {syncAllResult.synced === 0 && syncAllResult.failed === 0 && (
-                                <span>{t('allUpToDate')}</span>
-                              )}
+                              {syncAllResult.synced > 0 && <span>{t('syncedCount', { count: syncAllResult.synced } as any)}</span>}
+                              {syncAllResult.failed > 0 && <span className="ml-2">{t('failedCount', { count: syncAllResult.failed } as any)}</span>}
+                              {syncAllResult.synced === 0 && syncAllResult.failed === 0 && <span>{t('allUpToDate')}</span>}
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </div>
                     )}
-                    
-                    {/* Disconnect button */}
-                    <div className="px-4 py-3">
-                      <button
-                        onClick={() => handleDisconnect(integration)}
-                        className="w-full py-2.5 rounded-xl text-red-500 font-medium transition-all active:scale-95"
-                        style={{ backgroundColor: 'rgba(255, 59, 48, 0.1)' }}
-                      >
-                        {t('disconnect')}
-                      </button>
-                    </div>
-                  </>
+
+                    <button
+                      onClick={() => handleDisconnect(integration)}
+                      className="w-full h-10 rounded-xl border text-sm"
+                      style={{ borderColor: 'var(--separator)', color: 'var(--destructive)', backgroundColor: 'var(--bg-primary)' }}
+                    >
+                      {t('disconnect')}
+                    </button>
+                  </div>
                 )}
               </div>
             )
           })}
-          
-          {/* Sync info based on plan */}
-          <div 
-            className="rounded-xl p-4 mt-6"
-            style={{ backgroundColor: 'var(--bg-secondary)' }}
-          >
-            <h4 
-              className="font-medium mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {t('howSyncWorks')}
-            </h4>
-            <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+
+          <div className="rounded-2xl border p-4 mt-4" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--separator)' }}>
+            <h4 className="text-sm font-medium text-[var(--text-primary)] mb-2">{t('howSyncWorks')}</h4>
+            <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
               {plan === 'pro' ? (
                 <>
-                  <li className="flex items-start gap-2">
-                    <span>•</span>
-                    <span>{t('proSyncManual')}</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>•</span>
-                    <span>{t('proSyncPerNote')}</span>
-                  </li>
+                  <li>• {t('proSyncManual')}</li>
+                  <li>• {t('proSyncPerNote')}</li>
                 </>
               ) : plan === 'ultra' ? (
                 <>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>{t('ultraSyncAuto')}</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>{t('ultraSyncBackground')}</span>
-                  </li>
+                  <li>• {t('ultraSyncAuto')}</li>
+                  <li>• {t('ultraSyncBackground')}</li>
                 </>
               ) : (
-                <li className="flex items-start gap-2">
-                  <span>🔒</span>
-                  <span>{t('syncRequiresPaidPlan')}</span>
-                </li>
+                <li>• {t('syncRequiresPaidPlan')}</li>
               )}
             </ul>
           </div>
         </div>
       )}
-      
-      {/* Database picker modal */}
+
       <AnimatePresence>
         {showDatabasePicker && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
+            className="fixed inset-0 bg-black/35 flex items-end p-3 z-50"
             onClick={() => setShowDatabasePicker(false)}
           >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25 }}
-              className="w-full max-w-lg rounded-t-3xl p-6"
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+              className="w-full rounded-2xl p-4"
               style={{ backgroundColor: 'var(--bg-secondary)' }}
               onClick={e => e.stopPropagation()}
             >
-              <h3 
-                className="text-xl font-bold mb-4"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                {t('selectDatabase')}
-              </h3>
-              <p 
-                className="text-sm mb-4"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {t('selectDatabaseDescription')}
-              </p>
-              
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <h3 className="text-base font-semibold text-[var(--text-primary)]">{t('selectDatabase')}</h3>
+              <p className="text-sm mt-1 text-[var(--text-secondary)]">{t('selectDatabaseDescription')}</p>
+              <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
                 {availableDatabases.map(db => (
                   <button
                     key={db.id}
                     onClick={() => handleSelectDatabase(db)}
-                    className="w-full p-4 rounded-xl flex items-center gap-3 transition-all active:scale-98"
-                    style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                    className="w-full h-11 px-3 rounded-xl border text-left text-sm"
+                    style={{ borderColor: 'var(--separator)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                   >
-                    <span className="text-xl">📁</span>
-                    <span 
-                      className="font-medium text-left flex-1"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      {db.name}
-                    </span>
-                    <svg 
-                      width="8" height="14" viewBox="0 0 8 14" 
-                      style={{ color: 'var(--text-tertiary)' }}
-                    >
-                      <path d="M1 1L7 7L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
+                    {db.name}
                   </button>
                 ))}
               </div>
-              
               <button
                 onClick={() => setShowDatabasePicker(false)}
-                className="w-full mt-4 py-3 rounded-xl font-medium"
-                style={{ 
-                  backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--text-secondary)'
-                }}
+                className="w-full h-10 mt-3 rounded-xl border text-sm"
+                style={{ borderColor: 'var(--separator)', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-primary)' }}
               >
                 {t('cancel')}
               </button>
@@ -753,76 +493,49 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
           </motion.div>
         )}
       </AnimatePresence>
-      
-      {/* Sync mode picker modal */}
+
       <AnimatePresence>
         {showSyncModeModal && selectedIntegration && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
+            className="fixed inset-0 bg-black/35 flex items-end p-3 z-50"
             onClick={() => setShowSyncModeModal(false)}
           >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25 }}
-              className="w-full max-w-lg rounded-t-3xl p-6"
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+              className="w-full rounded-2xl p-4"
               style={{ backgroundColor: 'var(--bg-secondary)' }}
               onClick={e => e.stopPropagation()}
             >
-              <h3 
-                className="text-xl font-bold mb-4"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                {t('selectSyncMode')}
-              </h3>
-              
-              <div className="space-y-2">
-                {SYNC_MODES.map(mode => (
-                  <button
-                    key={mode.value}
-                    onClick={() => handleSyncModeChange(mode.value)}
-                    className={`w-full p-4 rounded-xl flex items-center gap-3 transition-all active:scale-98 ${
-                      selectedIntegration.sync_mode === mode.value ? 'ring-2 ring-offset-2 ring-blue-500' : ''
-                    }`}
-                    style={{ 
-                      backgroundColor: 'var(--bg-tertiary)'
-                    }}
-                  >
-                    <span className="text-xl">{mode.icon}</span>
-                    <div className="text-left flex-1">
-                      <span 
-                        className="font-medium block"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {t(mode.labelKey as any)}
-                      </span>
-                      <span 
-                        className="text-sm"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        {t(`${mode.labelKey}Desc` as any)}
-                      </span>
-                    </div>
-                    {selectedIntegration.sync_mode === mode.value && (
-                      <svg width="20" height="20" viewBox="0 0 20 20" fill="var(--accent)">
-                        <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0zm-2 15l-5-5 1.41-1.41L8 12.17l7.59-7.59L17 6l-9 9z"/>
-                      </svg>
-                    )}
-                  </button>
-                ))}
+              <h3 className="text-base font-semibold text-[var(--text-primary)]">{t('selectSyncMode')}</h3>
+              <div className="mt-3 space-y-2">
+                {SYNC_MODES.map(mode => {
+                  const active = selectedIntegration.sync_mode === mode.value
+                  return (
+                    <button
+                      key={mode.value}
+                      onClick={() => handleSyncModeChange(mode.value)}
+                      className="w-full px-3 py-3 rounded-xl border text-left"
+                      style={{
+                        borderColor: active ? 'var(--text-primary)' : 'var(--separator)',
+                        backgroundColor: 'var(--bg-primary)',
+                      }}
+                    >
+                      <div className="text-sm font-medium text-[var(--text-primary)]">{t(mode.labelKey as any)}</div>
+                      <div className="text-xs mt-1 text-[var(--text-secondary)]">{t(`${mode.labelKey}Desc` as any)}</div>
+                    </button>
+                  )
+                })}
               </div>
-              
               <button
                 onClick={() => setShowSyncModeModal(false)}
-                className="w-full mt-4 py-3 rounded-xl font-medium"
-                style={{ 
-                  backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--text-secondary)'
-                }}
+                className="w-full h-10 mt-3 rounded-xl border text-sm"
+                style={{ borderColor: 'var(--separator)', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-primary)' }}
               >
                 {t('cancel')}
               </button>
@@ -833,4 +546,3 @@ export const SyncSettingsPage = ({ onBack: _onBack }: SyncSettingsPageProps) => 
     </motion.div>
   )
 }
-

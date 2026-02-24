@@ -3,7 +3,7 @@ import { createPortal, flushSync } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, ru } from 'date-fns/locale'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Note, api } from '../api/client'
 import { useTelegram } from '../hooks/useTelegram'
 import { useSubscription } from '../stores/subscription'
@@ -17,20 +17,24 @@ import { NoteActionBar } from './NoteDetail/NoteActionBar'
 
 interface NoteDetailProps {
   note: Note
+  tags?: string[]
   onBack?: () => void
   onDelete?: (id: string) => void
   onUpdate?: (note: Note) => void
 }
 
-export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
+export const NoteDetail = ({ note, tags = ['All'], onDelete, onUpdate }: NoteDetailProps) => {
   const { hapticImpact, hapticNotification, showConfirm, shareText, showAlert, switchInlineQuery, close } = useTelegram()
   const { subscription } = useSubscription()
   const { t, language } = useI18n()
+  const queryClient = useQueryClient()
   const locale = language === 'ru' ? ru : enUS
   const [isSharing, setIsSharing] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(note.content)
   const [editedSummary, setEditedSummary] = useState(note.summary || '')
+  const [editedTag, setEditedTag] = useState(note.tag || 'All')
+  const [isTagPickerOpen, setIsTagPickerOpen] = useState(false)
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [delayedKeyboardHeight, setDelayedKeyboardHeight] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -51,6 +55,12 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   useEffect(() => {
     setActiveTab(note.summary ? 'summary' : 'full')
   }, [note.id, note.summary])
+
+  useEffect(() => {
+    setEditedContent(note.content)
+    setEditedSummary(note.summary || '')
+    setEditedTag(note.tag || 'All')
+  }, [note.id, note.content, note.summary, note.tag])
 
   // Check if sync is enabled for user
   const canSync = subscription?.limits.sync_enabled ?? false
@@ -73,6 +83,11 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     if (isYesterday(d)) return `${t('yesterday')}, ${format(d, 'HH:mm', { locale })}`
     return format(d, 'd MMM', { locale })
   }, [note.created_at, language, t])
+
+  const availableTags = useMemo(() => {
+    const merged = ['All', ...tags]
+    return Array.from(new Set(merged))
+  }, [tags])
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -168,7 +183,8 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
   const updateMutation = useMutation({
     mutationFn: () => api.updateNote(note.id, {
       content: editedContent,
-      summary: editedSummary || undefined
+      summary: editedSummary || undefined,
+      tag: editedTag || 'All',
     }),
     onSuccess: (updatedNote) => {
       hapticNotification('success')
@@ -186,6 +202,35 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     onError: () => {
       hapticNotification('error')
       showAlert('Не удалось сохранить изменения')
+    }
+  })
+
+  const updateTagMutation = useMutation({
+    mutationFn: (tag: string) => api.updateNote(note.id, { tag }),
+    onSuccess: (updatedNote) => {
+      hapticNotification('success')
+      setEditedTag(updatedNote.tag || 'All')
+      onUpdate?.(updatedNote)
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
+    },
+    onError: () => {
+      hapticNotification('error')
+      showAlert('Failed to update tag')
+    }
+  })
+
+  const createTagMutation = useMutation({
+    mutationFn: (name: string) => api.createTag(name),
+    onSuccess: ({ tag }) => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      setEditedTag(tag)
+      if (!isEditing) {
+        updateTagMutation.mutate(tag)
+      }
+    },
+    onError: () => {
+      hapticNotification('error')
+      showAlert('Failed to create tag')
     }
   })
 
@@ -278,6 +323,7 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     flushSync(() => {
       setEditedContent(note.content)
       setEditedSummary(note.summary || '')
+      setEditedTag(note.tag || 'All')
       setIsEditing(true)
       // Hide action bar immediately when starting to edit (before keyboard opens)
       setActionBarVisible(false)
@@ -402,11 +448,29 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
     updateMutation.mutate()
   }
 
+  const handleSelectTag = (tag: string) => {
+    hapticImpact('light')
+    setEditedTag(tag)
+    setIsTagPickerOpen(false)
+    if (!isEditing && tag !== (note.tag || 'All')) {
+      updateTagMutation.mutate(tag)
+    }
+  }
+
+  const handleCreateTag = () => {
+    const raw = window.prompt(t('addTagPrompt'))
+    if (!raw) return
+    const name = raw.trim()
+    if (!name) return
+    createTagMutation.mutate(name)
+  }
+
   const handleCancelEdit = () => {
     hapticImpact('light')
     setIsEditing(false)
     setEditedContent(note.content)
     setEditedSummary(note.summary || '')
+    setEditedTag(note.tag || 'All')
     // Reset and show action bar when exiting edit mode
     setActionBarTargetHeight(0)
     setActionBarVisible(true)
@@ -660,6 +724,22 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
               <p className="text-base font-medium mb-4 text-[var(--text-secondary)] px-5">
                 {formattedDate}
               </p>
+
+              <div className="px-5 pb-4">
+                <button
+                  className="inline-flex items-center gap-2 h-9 px-4 rounded-full border text-sm font-medium"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    color: '#111827',
+                    borderColor: 'rgba(17, 24, 39, 0.12)',
+                  }}
+                  onClick={() => setIsTagPickerOpen(true)}
+                  disabled={updateTagMutation.isPending}
+                >
+                  <span>{t('tag')}</span>
+                  <span>{editedTag || 'All'}</span>
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -822,6 +902,61 @@ export const NoteDetail = ({ note, onDelete, onUpdate }: NoteDetailProps) => {
           </motion.div>
         </motion.div>
       </main>
+
+      <AnimatePresence>
+        {isTagPickerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/35 flex items-end p-3"
+            onClick={() => setIsTagPickerOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 30, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+              className="w-full rounded-2xl p-4"
+              style={{ backgroundColor: 'var(--bg-secondary)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                  {t('selectTag')}
+                </h3>
+                <button
+                  className="h-8 px-3 rounded-full border text-sm"
+                  style={{
+                    borderColor: 'var(--separator)',
+                    color: 'var(--text-secondary)',
+                  }}
+                  onClick={handleCreateTag}
+                  disabled={createTagMutation.isPending}
+                >
+                  + {t('addTag')}
+                </button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1">
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag}
+                    className="h-9 px-4 rounded-full text-sm font-medium whitespace-nowrap border"
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      color: editedTag === tag ? '#111827' : '#4B5563',
+                      borderColor: editedTag === tag ? '#111827' : 'rgba(17, 24, 39, 0.12)',
+                    }}
+                    onClick={() => handleSelectTag(tag)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {typeof document !== 'undefined' && createPortal(
         <>

@@ -1,5 +1,6 @@
 import logging
 from collections import OrderedDict
+import re
 from typing import Optional, List
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ from ..db.models import (
 
 class NotesService:
     """Service for managing notes and users."""
+    SYSTEM_TAG = "All"
     
     def __init__(self):
         self.client = get_supabase_client()
@@ -87,6 +89,135 @@ class NotesService:
             }).execute()
         except Exception as e:
             logger.warning(f"Failed to update search vector for note {note_id}: {e}")
+
+    def _normalize_tag_name(self, tag: Optional[str]) -> Optional[str]:
+        if tag is None:
+            return None
+        cleaned = re.sub(r"\s+", " ", str(tag)).strip()
+        if not cleaned:
+            return None
+        if len(cleaned) > 40:
+            cleaned = cleaned[:40].strip()
+        if cleaned.lower() == self.SYSTEM_TAG.lower():
+            return self.SYSTEM_TAG
+        return cleaned
+
+    @staticmethod
+    def _tokenize_for_tag_match(text: str) -> set[str]:
+        return set(re.findall(r"[a-zа-яё0-9]{2,}", text.lower()))
+
+    async def get_tags(self, user_id: UUID) -> List[str]:
+        """Get user tags with the system tag first."""
+        rows = self.client.table("note_tags").select("name").eq(
+            "user_id", str(user_id)
+        ).order("created_at", desc=False).execute()
+
+        merged: dict[str, str] = {}
+        if rows.data:
+            for row in rows.data:
+                normalized = self._normalize_tag_name(row.get("name"))
+                if not normalized or normalized == self.SYSTEM_TAG:
+                    continue
+                key = normalized.lower()
+                if key not in merged:
+                    merged[key] = normalized
+
+        notes_rows = self.client.table("notes").select("tag").eq(
+            "user_id", str(user_id)
+        ).is_("deleted_at", "null").execute()
+        if notes_rows.data:
+            for row in notes_rows.data:
+                normalized = self._normalize_tag_name(row.get("tag"))
+                if not normalized or normalized == self.SYSTEM_TAG:
+                    continue
+                key = normalized.lower()
+                if key not in merged:
+                    merged[key] = normalized
+
+        custom = sorted(merged.values(), key=lambda item: item.lower())
+        return [self.SYSTEM_TAG, *custom]
+
+    async def create_tag(self, user_id: UUID, name: str) -> str:
+        """Create a custom tag for user and return normalized display name."""
+        normalized = self._normalize_tag_name(name)
+        if not normalized:
+            raise ValueError("Tag name is empty")
+        if normalized == self.SYSTEM_TAG:
+            return self.SYSTEM_TAG
+
+        existing = self.client.table("note_tags").select("name").eq(
+            "user_id", str(user_id)
+        ).ilike("name", normalized).limit(1).execute()
+        if existing.data:
+            return self._normalize_tag_name(existing.data[0].get("name")) or normalized
+
+        try:
+            result = self.client.table("note_tags").insert({
+                "user_id": str(user_id),
+                "name": normalized,
+            }).execute()
+            if result.data:
+                return self._normalize_tag_name(result.data[0].get("name")) or normalized
+        except Exception as e:
+            logger.warning(f"Failed to create tag '{normalized}' for user {user_id}: {e}")
+
+        return normalized
+
+    async def _resolve_note_tag(
+        self,
+        user_id: UUID,
+        requested_tag: Optional[str],
+        content: str,
+        title: Optional[str],
+        summary: Optional[str],
+    ) -> str:
+        normalized_requested = self._normalize_tag_name(requested_tag)
+        if normalized_requested == self.SYSTEM_TAG:
+            return self.SYSTEM_TAG
+
+        tags = await self.get_tags(user_id)
+        custom_tags = [tag for tag in tags if tag != self.SYSTEM_TAG]
+        existing_by_lower = {tag.lower(): tag for tag in custom_tags}
+
+        if normalized_requested and normalized_requested.lower() in existing_by_lower:
+            return existing_by_lower[normalized_requested.lower()]
+
+        if not custom_tags:
+            return self.SYSTEM_TAG
+
+        body = "\n".join(filter(None, [title or "", summary or "", content or ""])).lower()
+        if not body.strip():
+            return self.SYSTEM_TAG
+
+        body_tokens = self._tokenize_for_tag_match(body)
+        title_tokens = self._tokenize_for_tag_match(title or "")
+
+        best_tag = self.SYSTEM_TAG
+        best_score = 0.0
+
+        for tag in custom_tags:
+            tag_tokens = self._tokenize_for_tag_match(tag)
+            if not tag_tokens:
+                continue
+
+            overlap = body_tokens.intersection(tag_tokens)
+            overlap_ratio = len(overlap) / max(1, len(tag_tokens))
+            score = overlap_ratio * 0.45
+
+            tag_lower = tag.lower()
+            if re.search(rf"(?<!\w){re.escape(tag_lower)}(?!\w)", body):
+                score += 0.45
+            if overlap.intersection(title_tokens):
+                score += 0.2
+
+            if score > best_score:
+                best_score = score
+                best_tag = tag
+
+        if best_score >= 0.7:
+            return best_tag
+
+        return self.SYSTEM_TAG
 
     async def _decrypt_note_row(
         self,
@@ -416,6 +547,13 @@ class NotesService:
         content = note_data.content or ""
         summary = note_data.summary
         title = note_data.title
+        tag = await self._resolve_note_tag(
+            user_id=user_id,
+            requested_tag=note_data.tag,
+            content=content,
+            title=title,
+            summary=summary,
+        )
 
         content_enc = self.crypto.encrypt_text(content, keys.enc_key, f"{user_id}:content")
         summary_enc = (
@@ -440,6 +578,7 @@ class NotesService:
             "title_hash": self.crypto.hash_text(title, keys.hash_key) if title else None,
             "search_lang": self._normalize_search_lang(user_language),
             "source": note_data.source,
+            "tag": tag,
             "duration_seconds": note_data.duration_seconds,
         }
         # Only include images if provided and not empty
@@ -503,6 +642,17 @@ class NotesService:
         content = note_data.content if note_data.content is not None else current_note.content
         summary = note_data.summary if note_data.summary is not None else current_note.summary
         title = note_data.title if note_data.title is not None else current_note.title
+        tag = (
+            await self._resolve_note_tag(
+                user_id=user_id,
+                requested_tag=note_data.tag,
+                content=content,
+                title=title,
+                summary=summary,
+            )
+            if note_data.tag is not None
+            else (self._normalize_tag_name(getattr(current_note, "tag", None)) or self.SYSTEM_TAG)
+        )
 
         keys = self.crypto.derive_keys(data_key)
         update_data = {
@@ -524,6 +674,7 @@ class NotesService:
             "content": None,
             "summary": None,
             "title": None,
+            "tag": tag,
         }
 
         search_lang = (
@@ -674,6 +825,7 @@ class NotesService:
                 title=note.title,
                 summary=note.summary,
                 source=note.source,
+                tag=getattr(note, "tag", self.SYSTEM_TAG),
                 duration_seconds=note.duration_seconds,
                 images=getattr(note, "images", []) or [],
                 voice_url=getattr(note, "voice_url", None),

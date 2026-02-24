@@ -62,12 +62,26 @@ PENDING_INTENT_TTL_SEC = 15 * 60
 QUESTION_PREFIXES = (
     "что ", "как ", "где ", "когда ", "почему ", "зачем ", "кто ", "какой ",
     "какая ", "какие ", "сколько ", "чей ", "чья ", "чьи ",
-    "расскажи ", "напомни ", "подскажи ", "объясни ", "покажи ",
+    "расскажи ", "напомни ", "подскажи ", "объясни ", "покажи ", "можешь ",
+    "what ", "how ", "why ", "where ", "when ", "who ", "can you ", "do you ",
 )
 
 NOTE_PREFIXES = (
     "заметка:", "заметка ", "запомни ", "сохрани ", "конспект ", "итоги ",
-    "план ", "todo ", "todo:", "идея ", "мысли ",
+    "план ", "todo ", "todo:", "идея ", "мысли ", "задача ", "чеклист ",
+    "note:", "save ", "remember ", "todo:", "minutes:",
+)
+
+QUESTION_KEYWORDS = (
+    "что", "как", "почему", "зачем", "когда", "где", "кто", "какой",
+    "можно", "помнишь", "какие", "сколько", "ли", "what", "how",
+    "why", "where", "when", "who", "which", "can", "could",
+)
+
+NOTE_KEYWORDS = (
+    "заметка", "сохрани", "запомни", "итоги", "конспект", "план",
+    "задача", "todo", "чеклист", "идея", "мысли", "note", "save",
+    "remember", "summary", "minutes",
 )
 
 
@@ -189,19 +203,49 @@ def detect_message_intent(text: str) -> str:
         return "note"
 
     lowered = normalized.lower()
+    words = re.findall(r"[a-zа-яё0-9]+", lowered)
     has_question_mark = "?" in normalized
+    has_line_breaks = "\n" in normalized
     starts_with_question = lowered.startswith(QUESTION_PREFIXES)
     starts_with_note = lowered.startswith(NOTE_PREFIXES)
+    asks_for_answer = bool(re.search(r"\b(ответь|расскажи|объясни|подскажи|answer|explain|tell me)\b", lowered))
+    explicit_note_command = bool(re.search(r"\b(сохрани|запомни|save|remember)\b", lowered))
 
-    if has_question_mark or starts_with_question:
-        return "ask"
+    question_hits = sum(1 for word in words if word in QUESTION_KEYWORDS)
+    note_hits = sum(1 for word in words if word in NOTE_KEYWORDS)
+
+    ask_score = 0.0
+    note_score = 0.0
+
+    if has_question_mark:
+        ask_score += 1.3
+    if starts_with_question:
+        ask_score += 1.1
+    if asks_for_answer:
+        ask_score += 0.6
+    ask_score += min(0.9, question_hits * 0.25)
+
     if starts_with_note:
+        note_score += 1.2
+    if explicit_note_command:
+        note_score += 0.7
+    if has_line_breaks:
+        note_score += 0.3
+    if len(normalized) >= 240:
+        note_score += 0.5
+    note_score += min(0.9, note_hits * 0.2)
+
+    score_delta = ask_score - note_score
+    if score_delta >= 0.65:
+        return "ask"
+    if score_delta <= -0.65:
         return "note"
-    if len(normalized) >= 260:
+
+    if has_question_mark and ask_score >= 1.0:
+        return "ask"
+    if len(normalized) >= 300 or has_line_breaks:
         return "note"
-    if "\n" in normalized:
-        return "note"
-    if len(normalized) <= 35:
+    if len(normalized) <= 25:
         return "ambiguous"
     return "ambiguous"
 

@@ -8,18 +8,32 @@ import { EmptyState } from './ui/EmptyState'
 
 interface NotesListProps {
   searchQuery: string
+  selectedTag: string
   onSelectNote?: (note: Note) => void
 }
 
-export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
+export const NotesList = ({ searchQuery, selectedTag, onSelectNote }: NotesListProps) => {
   const { groupedNotes, isLoading } = useNotes()
   const { results: searchResults, isLoading: isSearching } = useSearchNotes(searchQuery)
   const { t } = useI18n()
 
   const isSearchMode = searchQuery.length >= 2
   const showLoading = isLoading || (isSearchMode && isSearching)
+  const isAllTag = selectedTag === 'All'
 
-  // Loading state
+  const filteredGroups = isAllTag
+    ? groupedNotes
+    : groupedNotes
+      .map((group) => ({
+        ...group,
+        notes: group.notes.filter((note) => (note.tag || 'All') === selectedTag),
+      }))
+      .filter((group) => group.notes.length > 0)
+
+  const filteredSearchResults = isAllTag
+    ? searchResults
+    : searchResults.filter((result) => (result.tag || 'All') === selectedTag)
+
   if (showLoading) {
     return (
       <div className="px-4 pt-4">
@@ -38,12 +52,11 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
     )
   }
 
-  // Search results
   if (isSearchMode) {
-    if (searchResults.length === 0) {
+    if (filteredSearchResults.length === 0) {
       return (
         <EmptyState
-          icon="🔍"
+          icon="?"
           title={t('searchNoResults')}
           description={t('searchNoResultsDesc')}
         />
@@ -53,12 +66,12 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
     return (
       <div className="pt-4">
         <h2 className="text-xl font-bold px-4 mb-2 text-[var(--text-primary)]">
-          {t('results')} ({searchResults.length})
+          {t('results')} ({filteredSearchResults.length})
         </h2>
 
         <div className="mx-4 overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
           <AnimatePresence mode="popLayout">
-            {searchResults.map((result, index) => {
+            {filteredSearchResults.map((result, index) => {
               const note: Note = {
                 id: result.id,
                 user_id: '',
@@ -66,6 +79,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                 title: result.title ?? null,
                 summary: result.summary,
                 source: result.source || 'text',
+                tag: result.tag || 'All',
                 duration_seconds: result.duration_seconds,
                 images: result.images || null,
                 voice_url: result.voice_url || null,
@@ -79,7 +93,7 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
                   note={note}
                   onSelect={onSelectNote}
                   isFirst={index === 0}
-                  isLast={index === searchResults.length - 1}
+                  isLast={index === filteredSearchResults.length - 1}
                 />
               )
             })}
@@ -89,22 +103,20 @@ export const NotesList = ({ searchQuery, onSelectNote }: NotesListProps) => {
     )
   }
 
-  // Empty state
-  if (groupedNotes.length === 0) {
+  if (filteredGroups.length === 0) {
     return (
       <EmptyState
-        icon="📝"
+        icon="N"
         title={t('noNotes')}
         description={t('noNotesDesc')}
       />
     )
   }
 
-  // Grouped notes list - Apple Notes style
   return (
     <div className="pt-6 mb-20">
       <AnimatePresence mode="popLayout">
-        {groupedNotes.map((group, groupIndex) => (
+        {filteredGroups.map((group, groupIndex) => (
           <DateGroup
             key={group.label}
             label={group.label}
